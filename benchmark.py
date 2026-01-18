@@ -180,7 +180,10 @@ class BenchmarkSuite:
             print(
                 f"  python3 benchmark.py --stage aidaptiv --run-id {os.path.basename(self.results_dir)}")
             print("="*60)
-            input("Press Enter to continue once aiDAPTIV is verified enabled >> ")
+            user_in = input("Press Enter to continue, or 'q' to quit >> ")
+            if user_in.lower().strip() == 'q':
+                print("👋 Exiting benchmark early.")
+                return
 
         # Run aiDAPTIV
         if stage in ["all", "aidaptiv"]:
