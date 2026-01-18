@@ -88,3 +88,49 @@ Results are saved to `results/<TIMESTAMP>/`:
 *   `ttft_comparison.png`: Bar chart comparing Latency/OOMs.
 *   `ram_timeline_test.png`: System memory usage over time.
 *   `metrics_*.csv`: Raw telemetry data.
+
+## 🗺️ Roadmap
+
+### Completed ✅
+- [x] Live Dashboard with real-time telemetry
+- [x] Report Viewer with interactive charts
+- [x] Memory Timeline visualization (RAM + VRAM)
+- [x] Latency vs Context Size charts
+- [x] Human-readable timestamps and run metrics
+- [x] CLI 'quit' option for partial runs
+
+### Planned Features 🚧
+
+#### Phase 1: Test Setup UI
+- [ ] **Scenario Selector**: Web UI to configure and launch benchmarks
+  - Model selection dropdown
+  - Context range configuration (start, end, step)
+  - Scenario naming
+  - Command generator (copy/paste for CLI execution)
+
+#### Phase 2: Enhanced Metrics
+- [ ] **TTFT (Time to First Token)**: Separate prefill timing from generation
+- [ ] **OOM Detection**: Visual indicators on charts when tests fail
+- [ ] **Tier 3 I/O Overlay**: Add disk throughput to memory timeline
+- [ ] **Performance Delta**: Calculate and display aiDAPTIV overhead percentage
+
+#### Phase 3: Advanced Reporting
+- [ ] **Run Comparison View**: Side-by-side comparison of two benchmark sessions
+  - Overlay charts (Baseline vs aiDAPTIV)
+  - Delta metrics table
+  - Speedup/slowdown calculations
+- [ ] **Export to PDF**: Generate slide-ready reports
+- [ ] **CSV Export**: Download raw data for external analysis
+
+#### Phase 4: Production Deployment
+- [ ] **DGX Validation**: Test on NVIDIA DGX with real aiDAPTIV hardware
+- [ ] **Multi-GPU Support**: Distribute workload across multiple GPUs
+- [ ] **Automated Toggle**: Script-based aiDAPTIV enable/disable (if supported)
+- [ ] **CI/CD Integration**: Automated benchmark runs on hardware changes
+
+#### Phase 5: Advanced Features
+- [ ] **Model Auto-Discovery**: Detect available models from Ollama/vLLM
+- [ ] **Batch Testing**: Queue multiple scenarios for overnight runs
+- [ ] **Alerting**: Slack/email notifications on benchmark completion
+- [ ] **Historical Trends**: Track performance over time across multiple runs
+
