@@ -15,6 +15,7 @@ runtime:
 # MANUAL MODE: The script will pause or you can run stages separately.
 aidaptiv:
   toggle_method: "manual" 
+  storage_device: "nvme0n1" # Set to actual Phison device. On dev Mac, use 'none' to see OS Swap only.
   
 # Benchmark Sweep Parameters
 test:

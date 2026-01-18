@@ -40,16 +40,15 @@ class BenchmarkSuite:
         """
         Executes a single inference request targeting a specific context length.
         """
-        prompt = "test " * (context_len //
-                            2)  # Rough approximation: 1 token ~ 2 chars? No, 1 token ~ 4 chars.
-        # Better: 1 token ~ 1 word. "p " * len
-        # For strict accuracy we need tokenizer, but for V1 rough is okay.
+        # Create prompt of appropriate length
+        # Approx 1 token ~ 4 chars. Word 'test' is 1 token.
+        prompt = "test " * (context_len)
 
         payload = {
             "model": self.config['runtime']['model_name'],
             "prompt": prompt,
             "max_tokens": 10 if dry_run else self.config['test']['max_tokens_output'],
-            "stream": False  # V1 Simple
+            "stream": False
         }
 
         t0 = time.time()
@@ -63,10 +62,16 @@ class BenchmarkSuite:
             data = resp.json()
             latency = (time.time() - t0) * 1000
 
+            # Extract usage if available, else estimate
+            usage = data.get('usage', {})
+            prompt_toks = usage.get('prompt_tokens', context_len)
+            comp_toks = usage.get('completion_tokens', 0)
+            total_toks = prompt_toks + comp_toks
+
             return {
                 "success": True,
                 "latency_ms": latency,
-                "output_tokens": data.get('usage', {}).get('completion_tokens', 0)
+                "total_tokens": total_toks
             }
         except Exception as e:
             return {
@@ -82,15 +87,19 @@ class BenchmarkSuite:
         cmd = self.config['aidaptiv'].get(cmd_key)
         if cmd:
             print(f"➡️ Executing: {cmd}")
-            # subprocess.run(cmd, shell=True) # NOTE: Exporting env vars in subprocess won't persist to runtime if runtime is separate process.
-            # Ideally runtime is restarted or checks checking this.
-            # For V1, we assume User handles this or Runtime is wrapped.
-            # We'll just print instructions for now if manual.
 
         # 2. Start Telemetry
         telemetry_file = os.path.join(self.results_dir, f"metrics_{mode}.csv")
+        storage_dev = self.config['aidaptiv'].get('storage_device', 'disk0')
+        model_name = self.config['runtime'].get('model_name', 'Unknown')
+
         collector = TelemetryCollector(
-            telemetry_file, self.config['telemetry']['sample_interval_sec'])
+            telemetry_file,
+            self.config['telemetry']['sample_interval_sec'],
+            sidecar_url="http://localhost:8081",
+            storage_device=storage_dev,
+            model_name=model_name
+        )
         collector.start()
 
         results = []
@@ -99,6 +108,8 @@ class BenchmarkSuite:
             contexts = self.config['test']['context_lengths']
             for ctx in contexts:
                 print(f"   📋 Testing Context: {ctx}...")
+                collector.set_status(
+                    f"Running {mode.upper()} | Context: {ctx}")
 
                 # Warmup
                 self.run_prompt(ctx, dry_run=True)
@@ -106,13 +117,22 @@ class BenchmarkSuite:
                 # Measured Runs
                 latencies = []
                 errors = 0
-                for i in range(self.config['test']['runs_per_context']):
+                for _ in range(self.config['test']['runs_per_context']):
                     res = self.run_prompt(ctx)
                     if res['success']:
-                        latencies.append(res['latency_ms'])
+                        lat_ms = res['latency_ms']
+                        latencies.append(lat_ms)
+
+                        # Calculate and Push TPS
+                        tps = res['total_tokens'] / (lat_ms / 1000.0)
+                        collector.set_tps(tps)
                     else:
                         errors += 1
+                        collector.set_tps(0.0)
                         print(f"      ❌ Failed: {res['error']}")
+
+                # Reset TPS after context run
+                collector.set_tps(0.0)
 
                 # Check for OOM / Failure
                 pass_rate = (len(latencies) /
