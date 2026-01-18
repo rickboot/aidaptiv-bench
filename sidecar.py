@@ -37,6 +37,7 @@ def get_dashboard():
     <html>
     <head>
         <title>aiDAPTIV Bench</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
             body { font-family: 'Segoe UI', monospace; background: #111; color: #eee; padding: 0; margin: 0; }
             .navbar { background: #222; padding: 10px 20px; border-bottom: 1px solid #333; display: flex; align-items: center; }
@@ -68,6 +69,9 @@ def get_dashboard():
             .back-btn { background: #333; color: #fff; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; margin-bottom: 20px; }
             .back-btn:hover { background: #444; }
             pre { background: #1a1a1a; padding: 15px; overflow: auto; border-radius: 5px; border: 1px solid #333; }
+            
+            /* Charts */
+            .chart-container { background: #1a1a1a; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #333; height: 350px; }
         </style>
     </head>
     <body>
@@ -145,6 +149,7 @@ def get_dashboard():
             let polling = true;
 
             function setView(view) {
+                console.log('setView called with:', view);
                 document.getElementById('view-dashboard').style.display = view === 'dashboard' ? 'block' : 'none';
                 document.getElementById('view-reports').style.display = view === 'reports' ? 'block' : 'none';
                 
@@ -152,6 +157,7 @@ def get_dashboard():
                 document.getElementById('btn-reports').className = view === 'reports' ? 'nav-btn active' : 'nav-btn';
 
                 if (view === 'reports') {
+                    console.log('Loading reports...');
                     loadReports();
                     polling = false;
                 } else {
@@ -160,10 +166,13 @@ def get_dashboard():
             }
 
             async function loadReports() {
-                const res = await fetch('/api/reports');
-                const list = await res.json();
-                const tbody = document.getElementById('reports-table-body');
-                tbody.innerHTML = '';
+                try {
+                    console.log('loadReports called');
+                    const res = await fetch('/api/reports');
+                    const list = await res.json();
+                    console.log('Reports loaded:', list);
+                    const tbody = document.getElementById('reports-table-body');
+                    tbody.innerHTML = '';
                 
                 list.forEach(run => {
                     const tr = document.createElement('tr');
@@ -226,7 +235,12 @@ def get_dashboard():
                 
                 document.getElementById('reports-list').style.display = 'block';
                 document.getElementById('report-detail').style.display = 'none';
+                } catch(e) {
+                    console.error('Error loading reports:', e);
+                }
             }
+
+            let currentChart = null;
 
             async function loadReportDetail(id) {
                 const res = await fetch(`/api/reports/${id}`);
@@ -236,8 +250,121 @@ def get_dashboard():
                 document.getElementById('report-detail').style.display = 'block';
                 
                 const content = document.getElementById('detail-content');
-                content.innerHTML = '';
+                content.innerHTML = `
+                    <div class="chart-container"><canvas id="latencyChart"></canvas></div>
+                    <div class="chart-container"><canvas id="resourceChart"></canvas></div>
+                `;
                 
+                // Wait for DOM to update
+                await new Promise(resolve => setTimeout(resolve, 10));
+                
+                // --- Latency Chart Logic (Existing) ---
+                if (currentChart) currentChart.destroy();
+                // ... (Keep Latency Logic essentially same, but wrapped or re-executed) ...
+                // Note: To avoid repeating, I will focus on the ADDITIONS here, but since I must replace the block, I'll include both.
+                
+                const ctxLat = document.getElementById('latencyChart').getContext('2d');
+                const ctxRes = document.getElementById('resourceChart').getContext('2d');
+                
+                // 1. LATENCY CHART
+                let contexts = new Set();
+                if (data.baseline) data.baseline.forEach(r => contexts.add(r.context));
+                if (data.aidaptiv) data.aidaptiv.forEach(r => contexts.add(r.context));
+                const labels = Array.from(contexts).sort((a,b) => a-b);
+                
+                const getDatapoints = (rows) => {
+                    if (!rows) return [];
+                    const m = {};
+                    rows.forEach(r => m[r.context] = r.avg_latency_ms);
+                    return labels.map(l => m[l] || null);
+                };
+
+                const latDatasets = [];
+                if (data.baseline) {
+                    latDatasets.push({ label: 'Baseline Latency', data: getDatapoints(data.baseline), borderColor: '#00ffff', tension: 0.3 });
+                }
+                if (data.aidaptiv) {
+                    latDatasets.push({ label: 'aiDAPTIV Latency', data: getDatapoints(data.aidaptiv), borderColor: '#ff00ff', tension: 0.3 });
+                }
+
+                new Chart(ctxLat, {
+                    type: 'line',
+                    data: { labels: labels, datasets: latDatasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { title: { display: true, text: 'Latency vs Context', color: '#fff' } },
+                        scales: { y: { beginAtZero: true, grid: {color: '#333'} }, x: { grid: {color: '#333'} } }
+                    }
+                });
+
+                // 2. RESOURCE CHART (Memory)
+                // Fetch CSVs
+                const fetchCsv = async (stage) => {
+                    const r = await fetch(`/api/reports/${id}/csv?stage=${stage}`);
+                    const j = await r.json();
+                    console.log(`fetchCsv(${stage}):`, j);
+                    return j.csv || "";
+                };
+                
+                const parseCsv = (csv) => {
+                    if (!csv) return { times: [], vram: [], ram: [] };
+                    const lines = csv.split('\\n');
+                    const times = [];
+                    const vram = [];
+                    const ram = [];
+                    // Header: timestamp,elapsed_sec,ram_used_gb,ram_total_gb,vram_used_gb,vram_total_gb,disk_read_mb_s,disk_write_mb_s,cpu_pct
+                    // skip header
+                    for (let i=1; i<lines.length; i++) {
+                        if (!lines[i]) continue;
+                        const parts = lines[i].split(',');
+                        if (parts.length < 5) continue;
+                        const elapsed = parseFloat(parts[1]);
+                        times.push(elapsed.toFixed(1)); // Seconds from start
+                        ram.push(parseFloat(parts[2]));
+                        vram.push(parseFloat(parts[4]));
+                    }
+                    return { times, vram, ram };
+                };
+
+                const baseCsv = await fetchCsv("baseline");
+                const aiCsv = await fetchCsv("aidaptiv");
+                const baseData = parseCsv(baseCsv);
+                const aiData = parseCsv(aiCsv);
+                
+                console.log('Baseline data:', baseData);
+                console.log('aiDAPTIV data:', aiData);
+                
+                const resDatasets = [];
+                if (baseData.times.length > 0) {
+                    resDatasets.push({ label: 'Baseline: Active AI Mem (GB)', data: baseData.vram, borderColor: '#00ff00', pointRadius: 0, borderWidth: 2 });
+                    resDatasets.push({ label: 'Baseline: Host RAM (GB)', data: baseData.ram, borderColor: '#0088ff', pointRadius: 0, borderWidth: 1 });
+                }
+                if (aiData.times.length > 0) {
+                     resDatasets.push({ label: 'aiDAPTIV: Active AI Mem (GB)', data: aiData.vram, borderColor: '#00ff00', borderDash: [5,5], pointRadius: 0 });
+                }
+
+                // We use Baseline time axis for simplicity, or longest
+                const timeLabels = baseData.times.length > aiData.times.length ? baseData.times : aiData.times;
+                
+                console.log('Time labels:', timeLabels);
+                console.log('Datasets:', resDatasets);
+
+                new Chart(ctxRes, {
+                    type: 'line',
+                    data: { labels: timeLabels, datasets: resDatasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { title: { display: true, text: 'Memory Usage Timeline', color: '#fff' } },
+                        scales: { 
+                            y: { title: {display:true, text:'GB'}, beginAtZero: true, grid: {color: '#333'} }, 
+                            x: { title: {display:true, text:'Seconds'}, grid: {color: '#333'}, ticks: {maxTicksLimit: 20} } 
+                        },
+                        animation: false
+                    }
+                });
+
+
+                // --- Table Logic ---
                 // Helper to render a table
                 const renderTable = (title, rows) => {
                     if (!rows || rows.length === 0) return;
@@ -411,15 +538,26 @@ def get_report(run_id: str):
 
 
 @app.get("/api/reports/{run_id}/csv")
-def get_report_csv(run_id: str):
-    """Get CSV data for charts."""
+def get_report_csv(run_id: str, stage: str = "all"):
+    """Get CSV data for charts, optionally filter by stage."""
     run_dir = os.path.join("results", run_id)
-    # Find CSV
-    csv_files = glob.glob(os.path.join(run_dir, "metrics_*.csv"))
-    if csv_files:
-        with open(csv_files[0], 'r') as f:
-            return {"csv": f.read()}
-    return {"csv": ""}
+    target_file = None
+
+    if stage == "baseline":
+        target_file = os.path.join(run_dir, "metrics_baseline.csv")
+    elif stage == "aidaptiv":
+        target_file = os.path.join(run_dir, "metrics_aidaptiv.csv")
+    else:
+        # Fallback to first found
+        csv_files = glob.glob(os.path.join(run_dir, "metrics_*.csv"))
+        if csv_files:
+            target_file = csv_files[0]
+
+    if target_file and os.path.exists(target_file):
+        with open(target_file, 'r') as f:
+            return {"csv": f.read(), "stage": stage}
+
+    return {"csv": "", "error": "File not found"}
 
 
 if __name__ == "__main__":
