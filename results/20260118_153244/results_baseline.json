@@ -1,0 +1,32 @@
+[
+  {
+    "context": 2048,
+    "avg_latency_ms": 2601.218104362488,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 4096,
+    "avg_latency_ms": 15726.504445075989,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 6144,
+    "avg_latency_ms": 20936.78319454193,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 8192,
+    "avg_latency_ms": 25682.808995246887,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 10240,
+    "avg_latency_ms": 22409.01756286621,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 12288,
+    "avg_latency_ms": 22140.092611312866,
+    "pass_rate_pct": 100.0
+  }
+]

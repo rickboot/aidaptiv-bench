@@ -101,7 +101,18 @@ Results are saved to `results/<TIMESTAMP>/`:
 
 ### Planned Features 🚧
 
-#### Phase 1: Test Setup UI
+#### Phase 1: Deployment & Documentation
+- [ ] **Deployment Guide**: Document setup for DGX/Strix Halo/Windows
+  - aiDAPTIV prerequisites and installation
+  - Platform-specific instructions (Linux, Windows, macOS)
+  - Toggle method documentation (manual/env var/auto)
+  - Troubleshooting common issues
+- [ ] **Cross-Platform Launcher**: Python-based launcher (replaces start.sh)
+  - Auto-detects OS and adjusts behavior
+  - Works on Linux, Windows, macOS
+  - Handles Ollama startup and model download
+
+#### Phase 2: Test Setup UI Enhancements
 - [ ] **Scenario Selector**: Web UI to configure and launch benchmarks
   - Model selection dropdown
   - Context range configuration (start, end, step)

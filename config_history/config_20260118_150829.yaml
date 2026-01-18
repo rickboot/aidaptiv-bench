@@ -11,10 +11,7 @@ aidaptiv:
 test:
   context_lengths:
   - 2048
-  - 4096
-  - 6144
   - 8192
-  - 10240
   - 12288
   runs_per_context: 2
   warmup_runs: 1

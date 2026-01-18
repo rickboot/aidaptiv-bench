@@ -5,6 +5,8 @@ import uvicorn
 import json
 import os
 import glob
+import yaml
+
 
 app = FastAPI(title="aiDAPTIV Live Dashboard")
 
@@ -72,12 +74,24 @@ def get_dashboard():
             
             /* Charts */
             .chart-container { background: #1a1a1a; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #333; height: 350px; }
+            
+            /* Setup Form */
+            .form-group { margin-bottom: 20px; }
+            .form-group label { display: block; margin-bottom: 8px; color: #aaa; font-weight: 500; }
+            .form-group input, .form-group select { width: 100%; padding: 10px; background: #222; border: 1px solid #444; border-radius: 4px; color: #fff; font-size: 1em; }
+            .form-group input:focus, .form-group select:focus { outline: none; border-color: #0f0; }
+            .btn-primary { background: #0f0; color: #000; border: none; padding: 12px 24px; border-radius: 4px; font-size: 1em; font-weight: bold; cursor: pointer; }
+            .btn-primary:hover { background: #0c0; }
+            .code-block { background: #1a1a1a; padding: 15px; border-radius: 5px; border: 1px solid #333; font-family: monospace; color: #0f0; margin-top: 20px; position: relative; }
+            .copy-btn { position: absolute; top: 10px; right: 10px; background: #333; color: #fff; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 0.9em; }
+            .copy-btn:hover { background: #444; }
         </style>
     </head>
     <body>
         <div class="navbar">
             <h1>aiDAPTIV Bench</h1>
             <button class="nav-btn active" id="btn-dash" onclick="setView('dashboard')">Live Monitor</button>
+            <button class="nav-btn" id="btn-setup" onclick="setView('setup')">Setup</button>
             <button class="nav-btn" id="btn-reports" onclick="setView('reports')">Reports</button>
         </div>
 
@@ -118,6 +132,86 @@ def get_dashboard():
             </div>
         </div>
 
+        <!-- SETUP VIEW -->
+        <div id="view-setup" class="container" style="display:none;">
+            <h2 style="margin-bottom: 30px;">Configure Benchmark Scenario</h2>
+            
+            <div class="card">
+                <h3 style="margin-top: 0;">Test Parameters</h3>
+                
+                <div class="form-group">
+                    <label for="model-select">Model</label>
+                    <select id="model-select">
+                        <option value="llama3.1:8b">Llama 3.1 8B</option>
+                        <option value="llama3.1:70b">Llama 3.1 70B</option>
+                        <option value="qwen2.5:72b">Qwen 2.5 72B</option>
+                        <option value="custom">Custom (edit config.yaml)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="context-start">Context Start (tokens)</label>
+                    <select id="context-start">
+                        <option value="1024">1K (1024)</option>
+                        <option value="2048" selected>2K (2048)</option>
+                        <option value="4096">4K (4096)</option>
+                        <option value="8192">8K (8192)</option>
+                        <option value="16384">16K (16384)</option>
+                        <option value="32768">32K (32768)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="context-end">Context End (tokens)</label>
+                    <select id="context-end">
+                        <option value="2048">2K (2048)</option>
+                        <option value="4096">4K (4096)</option>
+                        <option value="8192">8K (8192)</option>
+                        <option value="12288" selected>12K (12288)</option>
+                        <option value="16384">16K (16384)</option>
+                        <option value="32768">32K (32768)</option>
+                        <option value="65536">64K (65536)</option>
+                        <option value="131072">128K (131072)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="context-step">Context Step (tokens)</label>
+                    <select id="context-step">
+                        <option value="1024">1K (1024)</option>
+                        <option value="2048" selected>2K (2048)</option>
+                        <option value="4096">4K (4096)</option>
+                        <option value="8192">8K (8192)</option>
+                        <option value="16384">16K (16384)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="scenario-name">Scenario Name (optional)</label>
+                    <input type="text" id="scenario-name" placeholder="e.g., Llama-70B Memory Test">
+                </div>
+                
+                <button class="btn-primary" onclick="generateCommand()">Generate Command</button>
+                <button class="btn-primary" onclick="runBenchmark()" style="margin-left: 10px; background: #f90;">Run Benchmark</button>
+                
+                <div id="run-status" style="margin-top: 20px; padding: 15px; background: #1a1a1a; border-radius: 5px; border: 1px solid #333; display: none;">
+                    <p id="run-status-text" style="margin: 0; color: #0f0;"></p>
+                </div>
+            </div>
+            
+            <div id="command-output" style="display:none;">
+                <h3 style="margin-top: 40px;">Run This Command:</h3>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCommand()">Copy</button>
+                    <pre id="generated-command" style="margin: 0; white-space: pre-wrap;"></pre>
+                </div>
+                <p style="color: #888; margin-top: 15px;">
+                    <strong>Note:</strong> On macOS, you must run with <code>sudo</code> for GPU telemetry. 
+                    The benchmark will pause after Baseline to let you enable aiDAPTIV, or you can press 'q' to quit early.
+                </p>
+            </div>
+        </div>
+
         <!-- REPORTS VIEW -->
         <div id="view-reports" class="container" style="display:none">
             <div id="reports-list">
@@ -151,9 +245,11 @@ def get_dashboard():
             function setView(view) {
                 console.log('setView called with:', view);
                 document.getElementById('view-dashboard').style.display = view === 'dashboard' ? 'block' : 'none';
+                document.getElementById('view-setup').style.display = view === 'setup' ? 'block' : 'none';
                 document.getElementById('view-reports').style.display = view === 'reports' ? 'block' : 'none';
                 
                 document.getElementById('btn-dash').className = view === 'dashboard' ? 'nav-btn active' : 'nav-btn';
+                document.getElementById('btn-setup').className = view === 'setup' ? 'nav-btn active' : 'nav-btn';
                 document.getElementById('btn-reports').className = view === 'reports' ? 'nav-btn active' : 'nav-btn';
 
                 if (view === 'reports') {
@@ -349,15 +445,50 @@ def get_dashboard():
                 console.log('Time labels:', timeLabels);
                 console.log('Datasets:', resDatasets);
 
+                // Get context sizes from summary for subtitle
+                const hasSummary = data.summary && Array.isArray(data.summary) && data.summary.length > 0;
+                const contextLabels = hasSummary ? data.summary.map(s => `${s.context/1024}K`).join(' → ') : '';
+                const subtitle = contextLabels || 'Memory usage over time';
+                
                 new Chart(ctxRes, {
                     type: 'line',
                     data: { labels: timeLabels, datasets: resDatasets },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: { title: { display: true, text: 'Memory Usage Timeline', color: '#fff' } },
+                        plugins: { 
+                            title: { 
+                                display: true, 
+                                text: ['Memory Usage Timeline', subtitle],
+                                color: '#fff',
+                                font: { size: 14 }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: function(context) {
+                                        return `Time: ${context[0].label}s`;
+                                    },
+                                    afterTitle: function(context) {
+                                        // Try to infer which context test based on time
+                                        const time = parseFloat(context[0].label);
+                                        let contextHint = '';
+                                        if (data.summary && data.summary.length > 0) {
+                                            // Rough estimate: divide timeline by number of contexts
+                                            const totalTime = parseFloat(timeLabels[timeLabels.length - 1]);
+                                            const numContexts = data.summary.length;
+                                            const timePerContext = totalTime / numContexts;
+                                            const contextIndex = Math.min(Math.floor(time / timePerContext), numContexts - 1);
+                                            if (data.summary[contextIndex]) {
+                                                contextHint = `Context: ~${data.summary[contextIndex].context / 1024}K tokens`;
+                                            }
+                                        }
+                                        return contextHint;
+                                    }
+                                }
+                            }
+                        },
                         scales: { 
-                            y: { title: {display:true, text:'GB'}, beginAtZero: true, grid: {color: '#333'} }, 
-                            x: { title: {display:true, text:'Seconds'}, grid: {color: '#333'}, ticks: {maxTicksLimit: 20} } 
+                            y: { title: {display:true, text:'GB', color: '#aaa'}, beginAtZero: true, grid: {color: '#333'}, ticks: {color: '#aaa'} }, 
+                            x: { title: {display:true, text:'Seconds', color: '#aaa'}, grid: {color: '#333'}, ticks: {maxTicksLimit: 20, color: '#aaa'} } 
                         },
                         animation: false
                     }
@@ -444,6 +575,143 @@ def get_dashboard():
                     console.log(e);
                 }
             }
+            async function generateCommand() {
+                const model = document.getElementById('model-select').value;
+                const start = parseInt(document.getElementById('context-start').value);
+                const end = parseInt(document.getElementById('context-end').value);
+                const step = parseInt(document.getElementById('context-step').value);
+                const name = document.getElementById('scenario-name').value;
+                
+                // Validate inputs
+                if (end < start) {
+                    alert(`Invalid range: Context End (${end}) must be >= Context Start (${start})`);
+                    return;
+                }
+                
+                if (step <= 0) {
+                    alert(`Invalid step: Context Step must be > 0`);
+                    return;
+                }
+                
+                // Update config.yaml via API
+                try {
+                    const response = await fetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: model,
+                            context_start: start,
+                            context_end: end,
+                            context_step: step
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (!result.success) {
+                        alert('Failed to update config: ' + result.error);
+                        return;
+                    }
+                    
+                    console.log('Config updated:', result.message);
+                } catch (err) {
+                    console.error('Config update failed:', err);
+                    alert('Failed to update config. Check console for details.');
+                    return;
+                }
+                
+                // Generate context array for display
+                const contexts = [];
+                for (let c = parseInt(start); c <= parseInt(end); c += parseInt(step)) {
+                    contexts.push(c);
+                }
+                
+                const cmd = `sudo python3 benchmark.py`;
+                
+                // Show scenario name separately if provided
+                let displayCmd = cmd;
+                if (name) {
+                    displayCmd = `# Scenario: ${name}\n${cmd}`;
+                }
+                
+                displayCmd += `\n\n# Config updated: Model=${model}, Contexts=${contexts.join(', ')}`;
+                
+                document.getElementById('generated-command').innerText = displayCmd;
+                document.getElementById('command-output').style.display = 'block';
+                
+                // Store the actual command for copying
+                document.getElementById('command-output').dataset.actualCommand = cmd;
+                
+                // Scroll to command
+                document.getElementById('command-output').scrollIntoView({ behavior: 'smooth' });
+            }
+            
+            function copyCommand() {
+                const cmd = document.getElementById('command-output').dataset.actualCommand || 'sudo python3 benchmark.py';
+                navigator.clipboard.writeText(cmd).then(() => {
+                    const btn = document.querySelector('.copy-btn');
+                    btn.innerText = 'Copied!';
+                    setTimeout(() => btn.innerText = 'Copy', 2000);
+                }).catch(err => {
+                    console.error('Copy failed:', err);
+                    alert('Copy failed. Please manually select and copy the command.');
+                });
+            }
+            
+            async function runBenchmark() {
+                // First, update the config
+                await generateCommand();
+                
+                // Call backend to open Terminal
+                try {
+                    const response = await fetch('/api/run-benchmark', {
+                        method: 'POST'
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        alert(`✅ ${result.message}\n\nThe Live Monitor will update once the benchmark starts.`);
+                        // Switch to dashboard view
+                        setView('dashboard');
+                    } else {
+                        alert(`❌ Failed to open Terminal: ${result.error}`);
+                    }
+                } catch (err) {
+                    console.error('Run benchmark failed:', err);
+                    alert('Failed to open Terminal. Check console for details.');
+                }
+            }
+            
+            function updateScenarioName() {
+                const model = document.getElementById('model-select').value;
+                const start = parseInt(document.getElementById('context-start').value);
+                const end = parseInt(document.getElementById('context-end').value);
+                const step = parseInt(document.getElementById('context-step').value);
+                
+                // Format model name (e.g., "llama3.1:8b" -> "Llama-8B")
+                let modelShort = model.split(':')[0].replace('llama3.1', 'Llama').replace('qwen2.5', 'Qwen');
+                if (model.includes(':')) {
+                    const size = model.split(':')[1].toUpperCase();
+                    modelShort += `-${size}`;
+                }
+                
+                // Format context sizes (e.g., 2048 -> "2K")
+                const formatK = (val) => `${Math.round(val / 1024)}K`;
+                
+                const scenarioName = `${modelShort}_${formatK(start)}-${formatK(end)}_${formatK(step)}-step`;
+                document.getElementById('scenario-name').value = scenarioName;
+            }
+            
+            // Auto-update scenario name when form changes
+            document.addEventListener('DOMContentLoaded', () => {
+                updateScenarioName();
+                document.getElementById('model-select').addEventListener('change', updateScenarioName);
+                document.getElementById('context-start').addEventListener('change', updateScenarioName);
+                document.getElementById('context-end').addEventListener('change', updateScenarioName);
+                document.getElementById('context-step').addEventListener('change', updateScenarioName);
+            });
+            
             setInterval(poll, 1000);
         </script>
     </body>
@@ -558,6 +826,78 @@ def get_report_csv(run_id: str, stage: str = "all"):
             return {"csv": f.read(), "stage": stage}
 
     return {"csv": "", "error": "File not found"}
+
+
+@app.post("/api/config")
+def update_config(data: dict):
+    """Update config.yaml with new test parameters."""
+    try:
+        # Create backup directory if it doesn't exist
+        os.makedirs('config_history', exist_ok=True)
+
+        # Backup current config with timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = f'config_history/config_{timestamp}.yaml'
+
+        # Read existing config
+        with open('config.yaml', 'r') as f:
+            config = yaml.safe_load(f)
+
+        # Save backup
+        with open(backup_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        # Update runtime model if provided
+        if 'model' in data and data['model'] != 'custom':
+            config['runtime']['model_name'] = data['model']
+
+        # Update context lengths if provided
+        if 'context_start' in data and 'context_end' in data and 'context_step' in data:
+            start = int(data['context_start'])
+            end = int(data['context_end'])
+            step = int(data['context_step'])
+            contexts = list(range(start, end + 1, step))
+            config['test']['context_lengths'] = contexts
+
+        # Write back to file
+        with open('config.yaml', 'w') as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        return {"success": True, "message": f"Config updated (backup saved to {backup_path})"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/run-benchmark")
+def run_benchmark():
+    """Open Terminal and run the benchmark command (macOS only)."""
+    try:
+        import subprocess
+
+        # Get the current working directory
+        cwd = os.getcwd()
+
+        # Build the command to run in Terminal
+        # Escape quotes for AppleScript
+        cmd = f'cd \\"{cwd}\\" && sudo python3 benchmark.py'
+
+        # Use osascript to open Terminal and run the command
+        applescript = f'''tell application "Terminal"
+    activate
+    set newTab to do script "{cmd}"
+    delay 0.5
+    set frontmost of window 1 to true
+end tell'''
+
+        subprocess.run(['osascript', '-e', applescript],
+                       check=True, capture_output=True, text=True)
+
+        return {"success": True, "message": "Terminal opened. Please enter your password to start the benchmark."}
+    except subprocess.CalledProcessError as e:
+        return {"success": False, "error": f"AppleScript error: {e.stderr}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 if __name__ == "__main__":

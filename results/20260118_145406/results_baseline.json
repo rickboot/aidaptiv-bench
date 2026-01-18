@@ -1,17 +1,17 @@
 [
   {
     "context": 2048,
-    "avg_latency_ms": 3363.0675077438354,
+    "avg_latency_ms": 2904.530882835388,
     "pass_rate_pct": 100.0
   },
   {
     "context": 8192,
-    "avg_latency_ms": 19408.679604530334,
+    "avg_latency_ms": 17200.974583625793,
     "pass_rate_pct": 100.0
   },
   {
     "context": 12288,
-    "avg_latency_ms": 24230.30114173889,
+    "avg_latency_ms": 18856.325030326843,
     "pass_rate_pct": 100.0
   }
 ]
