@@ -1,0 +1,29 @@
+system_profile: dgx_spark_128gb
+
+runtime:
+  backend: vllm
+  model: meta-llama/Llama-3-70b-Instruct
+  quant: fp4
+  max_tokens: 512
+  temperature: 0.1
+
+aidaptiv:
+  enabled: true
+  mode: cache_kv_to_ssd
+
+pressure:
+  ram_limit_gb: 120
+  vram_reserve_gb: 0
+
+telemetry:
+  interval_ms: 500
+
+scenario:
+  id: S1_oom_finder
+  params:
+    context_steps: [2048, 4096, 8192, 16384, 32768]
+    concurrency: 1
+
+export:
+  write_csv: true
+  write_parquet: true

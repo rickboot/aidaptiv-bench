@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: aidaptiv-bench
+Version: 0.1.0
+Summary: Phison aiDAPTIV Benchmarking Tool
+Requires-Python: >=3.9
+Requires-Dist: gradio>=4.0.0
+Requires-Dist: psutil>=5.9.0
+Requires-Dist: aiohttp>=3.9.0
+Requires-Dist: pynvml>=11.5.0
+Requires-Dist: requests>=2.31.0
+Requires-Dist: pandas>=2.1.0
+Requires-Dist: plotly>=5.18.0
+Requires-Dist: fastapi>=0.109.0
+Requires-Dist: uvicorn>=0.27.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: flake8; extra == "dev"

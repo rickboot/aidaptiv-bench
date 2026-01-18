@@ -1,0 +1,33 @@
+# Phison aiDAPTIV Benchmarking Tool - V1 Configuration
+
+# Platform Details (Metadata for reports)
+platform:
+  name: "local_mac_16gb"
+  ram_gb: 16
+  
+# Inference Runtime Connection
+runtime:
+  backend: "vllm" 
+  endpoint: "http://localhost:11434/v1/completions"
+  model_name: "llama3.1:8b" 
+  
+# aiDAPTIV Control
+# MANUAL MODE: The script will pause or you can run stages separately.
+aidaptiv:
+  toggle_method: "manual" 
+  
+# Benchmark Sweep Parameters
+test:
+  # Pushing context to hit memory limits on 16GB Mac
+  context_lengths: [2048, 8192, 12288] 
+  runs_per_context: 2
+  warmup_runs: 1
+  max_tokens_output: 50
+  temperature: 0.0
+  timeout_seconds: 300
+
+# Telemetry Settings
+telemetry:
+  sample_interval_sec: 1.0
+  collect_disk_io: true
+  output_file: "metrics.csv"
