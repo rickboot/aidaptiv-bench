@@ -189,10 +189,11 @@ def get_dashboard():
                 <div class="form-group">
                     <label for="scenario-name">Scenario Name (optional)</label>
                     <input type="text" id="scenario-name" placeholder="e.g., Llama-70B Memory Test">
+                    <div class="row" style="display: flex; gap: 10px;">
+                    <button class="btn-primary" onclick="generateCommand()">Generate Benchmark Cmd</button>
+                    <button class="btn-primary" onclick="generateLimitCommand()" style="background: #e91e63;">Generate Limit Cmd (Linux)</button>
+                    <button class="btn-primary" onclick="runBenchmark()" style="margin-left: auto; background: #f90;">Run Benchmark</button>
                 </div>
-                
-                <button class="btn-primary" onclick="generateCommand()">Generate Command</button>
-                <button class="btn-primary" onclick="runBenchmark()" style="margin-left: 10px; background: #f90;">Run Benchmark</button>
                 
                 <div id="run-status" style="margin-top: 20px; padding: 15px; background: #1a1a1a; border-radius: 5px; border: 1px solid #333; display: none;">
                     <p id="run-status-text" style="margin: 0; color: #0f0;"></p>
@@ -200,14 +201,15 @@ def get_dashboard():
             </div>
             
             <div id="command-output" style="display:none;">
-                <h3 style="margin-top: 40px;">Run This Command:</h3>
-                <div class="code-block">
-                    <button class="copy-btn" onclick="copyCommand()">Copy</button>
-                    <pre id="generated-command" style="margin: 0; white-space: pre-wrap;"></pre>
-                </div>
-                <p style="color: #888; margin-top: 15px;">
-                    <strong>Note:</strong> On macOS, you must run with <code>sudo</code> for GPU telemetry. 
-                    The benchmark will pause after Baseline to let you enable aiDAPTIV, or you can press 'q' to quit early.
+                <h3>Generated Command</h3>
+                <pre id="generated-command" style="margin: 0; white-space: pre-wrap;"></pre>
+                <p id="cmd-desc" style="color: #bbb; font-style: italic; margin-top: 5px;"></p>
+            </div>
+            
+            <div style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px;">
+                <p style="color: #888;">
+                    <strong>Note:</strong> On Linux, use "Generate Limit Cmd" to physically constrain Ollama before running the benchmark. 
+                    On macOS/Windows, the limits are visual only.
                 </p>
             </div>
         </div>
