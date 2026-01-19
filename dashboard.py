@@ -159,8 +159,14 @@ def get_dashboard():
                 padding: 15px 20px;
                 border-radius: 4px;
             }
-            .stat-card label { display: block; font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 5px; }
-            .stat-card .val { font-size: 1.8em; font-weight: bold; color: #fff; }
+            .stat-card label { display: block; font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 5px; font-weight: bold; }
+            .stat-card .val { font-size: 2.2em; font-weight: 800; color: #fff; }
+            .stat-card.success { border-left-color: #0ba360; background: linear-gradient(to right, #0ba36015, transparent); }
+            .stat-card.context { border-left-color: #00e5ff; background: linear-gradient(to right, #00e5ff15, transparent); }
+            .stat-card.throughput { border-left-color: #f90; background: linear-gradient(to right, #f9015, transparent); }
+
+            .progress-container { width: 100%; background: rgba(0,0,0,0.3); height: 8px; border-radius: 4px; margin-top: 15px; overflow: hidden; }
+            .progress-fill { height: 100%; background: #fff; width: 0%; transition: width 0.5s ease; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
         </style>
     </head>
     <body>
@@ -185,9 +191,17 @@ def get_dashboard():
                 display: none;
                 box-shadow: 0 10px 30px rgba(11, 163, 96, 0.2);
             ">
-                <div style="font-size: 12px; opacity: 0.8; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Current Benchmark Step</div>
-                <div id="test-status-text" style="font-size: 26px; font-weight: 700; margin-top: 5px; font-family: 'Segoe UI', sans-serif;">
-                    Testing Context: 3K (2 of 3)
+                <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div>
+                        <div style="font-size: 12px; opacity: 0.8; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Current Benchmark Step</div>
+                        <div id="test-status-text" style="font-size: 26px; font-weight: 700; margin-top: 5px; font-family: 'Segoe UI', sans-serif;">
+                            Testing Context: --
+                        </div>
+                    </div>
+                    <div id="test-progress-pct" style="font-size: 14px; font-weight: bold; opacity: 0.9;">0%</div>
+                </div>
+                <div class="progress-container">
+                    <div id="test-progress-fill" class="progress-fill"></div>
                 </div>
             </div>
 
@@ -257,16 +271,16 @@ def get_dashboard():
                 <h2>Run Progress & Summary</h2>
             </div>
             <div class="summary-bar">
-                <div class="stat-card" style="border-left-color: #0ba360;">
+                <div class="stat-card success">
                     <label>Success Rate</label>
-                    <div id="summary-success" class="val">--</div>
+                    <div id="summary-success" class="val">0%</div>
                 </div>
-                <div class="stat-card" style="border-left-color: #00e5ff;">
+                <div class="stat-card context">
                     <label>Max Stable Context</label>
                     <div id="summary-max-ctx" class="val">--</div>
                 </div>
-                <div class="stat-card" style="border-left-color: #f90;">
-                    <label>Avg Throughout</label>
+                <div class="stat-card throughput">
+                    <label>Avg Throughput</label>
                     <div id="summary-avg-tps" class="val">--</div>
                 </div>
             </div>
@@ -1097,15 +1111,20 @@ def get_dashboard():
 
                         // Show/hide status bar
                         if (progress.current_context > 0) {
-                            document.getElementById(
-                                'test-status').style.display = 'block';
+                            document.getElementById('test-status').style.display = 'block';
                             const completedTests = Object.keys(progress.results).length;
+                            const totalPlanned = progress.total_contexts || 1;
                             const currentIdx = completedTests + 1;
+                            
                             document.getElementById('test-status-text').innerText =
-                                `Testing Context: ${formatK(progress.current_context)} (${currentIdx} of ${progress.total_contexts})`;
+                                `Testing Context: ${formatK(progress.current_context)} (${currentIdx} of ${totalPlanned})`;
+                                
+                            // Overall Progress %
+                            const progressPct = Math.round((completedTests / totalPlanned) * 100);
+                            document.getElementById('test-progress-pct').innerText = `${progressPct}%`;
+                            document.getElementById('test-progress-fill').style.width = `${progressPct}%`;
                         } else {
-                            document.getElementById(
-                                'test-status').style.display = 'none';
+                            document.getElementById('test-status').style.display = 'none';
                         }
 
                         // Update results table
