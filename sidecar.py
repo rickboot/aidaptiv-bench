@@ -445,43 +445,94 @@ def get_dashboard():
                 console.log('Time labels:', timeLabels);
                 console.log('Datasets:', resDatasets);
 
-                // Get context sizes from summary for subtitle
-                const hasSummary = data.summary && Array.isArray(data.summary) && data.summary.length > 0;
-                const contextLabels = hasSummary ? data.summary.map(s => `${s.context/1024}K`).join(' → ') : '';
-                const subtitle = contextLabels || 'Memory usage over time';
+                // Calculate context transitions based on latency data
+                // Heuristic: each context = (warmup + runs) * avg_latency
+                // We assume 3 runs total (1 warm + 2 measured) as per default config
+                let eventMarkers = [];
+                let accumulatedTime = 0;
                 
+                // Helper to add markers from a result set
+                const addMarkers = (results, labelPrefix) => {
+                    if (!results || !Array.isArray(results)) return;
+                    results.forEach(r => {
+                        eventMarkers.push({
+                            label: `${r.context/1024}K`,
+                            time: accumulatedTime
+                        });
+                        // Estimate duration: (avg_latency_ms * 3) / 1000
+                        // * 3 accounts for 1 measurement + overhead. 
+                        // latency is avg of measured runs. Total measuring measurements is runs_per_context.
+                        // Lets assume 3 measured invocations total (1 warm up + 2 measured)
+                        const duration = (r.avg_latency_ms * 3) / 1000; 
+                        accumulatedTime += duration;
+                    });
+                };
+
+                // Add markers for baseline
+                if (data.baseline) addMarkers(data.baseline, '');
+
+                // Define inline plugin for vertical lines
+                const verticalLinePlugin = {
+                    id: 'verticalLines',
+                    afterDatasetsDraw: (chart) => {
+                        const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+                        ctx.save();
+                        
+                        eventMarkers.forEach(marker => {
+                            // Find x pixel for the time
+                            // We need to find the closest data point since x-axis is categorical (labels)
+                            // or if linear, just project. Our x-axis is time labels strings, so we map.
+                            
+                            // Find closest index in timeLabels
+                            const closestIdx = timeLabels.findIndex(t => parseFloat(t) >= marker.time);
+                            if (closestIdx !== -1) {
+                                const xPos = x.getPixelForValue(timeLabels[closestIdx]);
+                                
+                                // Draw line
+                                ctx.beginPath();
+                                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                                ctx.lineWidth = 1;
+                                ctx.moveTo(xPos, top);
+                                ctx.lineTo(xPos, bottom);
+                                ctx.stroke();
+                                
+                                // Draw label
+                                ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                                ctx.textAlign = 'left';
+                                ctx.fillText(marker.label, xPos + 4, top + 10);
+                            }
+                        });
+                        ctx.restore();
+                    }
+                };
+
                 new Chart(ctxRes, {
                     type: 'line',
                     data: { labels: timeLabels, datasets: resDatasets },
+                    plugins: [verticalLinePlugin],
                     options: {
                         responsive: true, maintainAspectRatio: false,
                         plugins: { 
                             title: { 
                                 display: true, 
-                                text: ['Memory Usage Timeline', subtitle],
+                                text: 'Memory Usage & Test Events',
                                 color: '#fff',
                                 font: { size: 14 }
                             },
                             tooltip: {
                                 callbacks: {
-                                    title: function(context) {
-                                        return `Time: ${context[0].label}s`;
-                                    },
                                     afterTitle: function(context) {
-                                        // Try to infer which context test based on time
+                                        // Find active context based on time
                                         const time = parseFloat(context[0].label);
-                                        let contextHint = '';
-                                        if (data.summary && data.summary.length > 0) {
-                                            // Rough estimate: divide timeline by number of contexts
-                                            const totalTime = parseFloat(timeLabels[timeLabels.length - 1]);
-                                            const numContexts = data.summary.length;
-                                            const timePerContext = totalTime / numContexts;
-                                            const contextIndex = Math.min(Math.floor(time / timePerContext), numContexts - 1);
-                                            if (data.summary[contextIndex]) {
-                                                contextHint = `Context: ~${data.summary[contextIndex].context / 1024}K tokens`;
+                                        // Find the interval this time belongs to
+                                        for (let i = 0; i < eventMarkers.length; i++) {
+                                            const start = eventMarkers[i].time;
+                                            const end = eventMarkers[i+1] ? eventMarkers[i+1].time : Infinity;
+                                            if (time >= start && time < end) {
+                                                return `Context: ${eventMarkers[i].label}`;
                                             }
                                         }
-                                        return contextHint;
+                                        return '';
                                     }
                                 }
                             }

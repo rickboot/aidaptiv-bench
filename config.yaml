@@ -1,6 +1,7 @@
 platform:
   name: local_mac_16gb
   ram_gb: 16
+  vram_gb: 24
 runtime:
   backend: vllm
   endpoint: http://localhost:11434/v1/completions

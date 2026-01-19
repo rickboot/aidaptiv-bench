@@ -102,7 +102,7 @@ Results are saved to `results/<TIMESTAMP>/`:
 ### Planned Features 🚧
 
 #### Phase 1: Deployment & Documentation
-- [ ] **Deployment Guide**: Document setup for DGX/Strix Halo/Windows
+- [x] **[Deployment Guide](DEPLOYMENT.md)**: Document setup for DGX/Strix Halo/Windows
   - aiDAPTIV prerequisites and installation
   - Platform-specific instructions (Linux, Windows, macOS)
   - Toggle method documentation (manual/env var/auto)
