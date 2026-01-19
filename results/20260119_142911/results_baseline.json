@@ -1,0 +1,74 @@
+[
+  {
+    "context": 1024,
+    "avg_latency_ms": 34714.55097198486,
+    "p50_latency_ms": 34714.55097198486,
+    "p95_latency_ms": 34714.55097198486,
+    "p99_latency_ms": 34714.55097198486,
+    "avg_ttft_ms": 15070.838928222656,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 2048,
+    "avg_latency_ms": 35942.766189575195,
+    "p50_latency_ms": 35942.766189575195,
+    "p95_latency_ms": 35942.766189575195,
+    "p99_latency_ms": 35942.766189575195,
+    "avg_ttft_ms": 29004.762887954712,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 4096,
+    "avg_latency_ms": 48599.51686859131,
+    "p50_latency_ms": 48599.51686859131,
+    "p95_latency_ms": 48599.51686859131,
+    "p99_latency_ms": 48599.51686859131,
+    "avg_ttft_ms": 42024.250984191895,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 8192,
+    "avg_latency_ms": 50984.46297645569,
+    "p50_latency_ms": 50984.46297645569,
+    "p95_latency_ms": 50984.46297645569,
+    "p99_latency_ms": 50984.46297645569,
+    "avg_ttft_ms": 41841.61996841431,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 16384,
+    "avg_latency_ms": 50040.22288322449,
+    "p50_latency_ms": 50040.22288322449,
+    "p95_latency_ms": 50040.22288322449,
+    "p99_latency_ms": 50040.22288322449,
+    "avg_ttft_ms": 43018.94783973694,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 32768,
+    "avg_latency_ms": 52016.87693595886,
+    "p50_latency_ms": 52016.87693595886,
+    "p95_latency_ms": 52016.87693595886,
+    "p99_latency_ms": 52016.87693595886,
+    "avg_ttft_ms": 44482.52081871033,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 65536,
+    "avg_latency_ms": 50569.730043411255,
+    "p50_latency_ms": 50569.730043411255,
+    "p95_latency_ms": 50569.730043411255,
+    "p99_latency_ms": 50569.730043411255,
+    "avg_ttft_ms": 45338.57202529907,
+    "pass_rate_pct": 100.0
+  },
+  {
+    "context": 131072,
+    "avg_latency_ms": 56826.89118385315,
+    "p50_latency_ms": 56826.89118385315,
+    "p95_latency_ms": 56826.89118385315,
+    "p99_latency_ms": 56826.89118385315,
+    "avg_ttft_ms": 48404.87194061279,
+    "pass_rate_pct": 100.0
+  }
+]

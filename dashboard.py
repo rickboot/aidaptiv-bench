@@ -866,18 +866,15 @@ def get_dashboard():
                     if (!document.getElementById('chart-toggler')) {
                         const btn = document.createElement('button');
                         btn.id = 'chart-toggler';
-                        btn.className = 'btn-secondary';
-                        btn.style.cssText = 'width:100%; text-align:left; margin-bottom:15px; background:#222; border:1px solid #444;';
-                        btn.innerText = '▶ Show Performance Charts';
+                        btn.style.cssText = 'width:100%; text-align:left; margin-bottom:15px; background:#1e1e1e; border:1px solid #333; padding:20px; border-radius:8px; cursor:pointer;';
+                        btn.innerHTML = `<h3 style="margin:0; color:#fff; border-bottom:1px solid #444; padding-bottom:10px;">▼ Performance Charts</h3>`;
                         btn.onclick = () => {
                             const disp = latCanvas.parentElement.style.display === 'none' ? 'block' : 'none';
                             latCanvas.parentElement.style.display = disp;
-                            document.getElementById(
-                                'resourceChart').parentElement.style.display = disp;
-                            btn.innerText = disp === 'none' ? '▶ Show Performance Charts' : '▼ Hide Performance Charts';
+                            document.getElementById('resourceChart').parentElement.style.display = disp;
+                            btn.innerHTML = `<h3 style="margin:0; color:#fff; border-bottom:1px solid #444; padding-bottom:10px;">${disp === 'none' ? '▶' : '▼'} Performance Charts</h3>`;
                         };
-                        latCanvas.parentElement.insertAdjacentElement(
-                            'beforebegin', btn);
+                        latCanvas.parentElement.insertAdjacentElement('beforebegin', btn);
                     }
                 }
 
@@ -911,8 +908,18 @@ def get_dashboard():
                 new Chart(ctxLat, {
                     type: 'line',
                     data: { labels: labels.map(formatK), datasets: latDatasets },
-                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid:{
-                        color:'#333'} }, x: { grid:{color:'#333'} } }, plugins: { legend: { labels: { color: '#ccc' } } } }
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        scales: { 
+                            y: { beginAtZero: true, grid: { color: '#333' } }, 
+                            x: { grid: { color: '#333' } } 
+                        }, 
+                        plugins: { 
+                            legend: { labels: { color: '#ccc' } },
+                            title: { display: true, text: 'Request Latency by Context Size (ms)', color: '#fff', font: { size: 16 } }
+                        } 
+                    }
                 });
 
                 // ... Resource Chart Logic (Simplified for brevity in replacement, ensure full logic is kept) ...
@@ -949,8 +956,19 @@ def get_dashboard():
                 new Chart(ctxRes, {
                     type: 'line',
                     data: { labels: timeLabels, datasets: resDatasets },
-                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid:{color:'#333'} }, x: {
-                        grid:{color:'#333'}, ticks:{maxTicksLimit:20} } }, plugins: { legend: { labels: { color: '#ccc' } } }, animation: false }
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        scales: { 
+                            y: { beginAtZero: true, grid: { color: '#333' } }, 
+                            x: { grid: { color: '#333' }, ticks: { maxTicksLimit: 20 } } 
+                        }, 
+                        plugins: { 
+                            legend: { labels: { color: '#ccc' } },
+                            title: { display: true, text: 'Hardware Resource Utilization (Memory Timeline)', color: '#fff', font: { size: 16 } }
+                        }, 
+                        animation: false 
+                    }
                 });
 
 
