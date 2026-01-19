@@ -274,14 +274,14 @@ def get_dashboard():
                     <div id="ttft_sub" class="sub-val">Time to First Token</div>
                 </div>
                 <div class="card">
-                    <h2>Live Runtime</h2>
+                    <h2>Current Runtime</h2>
                     <div id="runtime_val" class="big-val">0.0s</div>
                     <div id="runtime_sub" class="sub-val">Executing Request...</div>
                 </div>
                 <div class="card">
-                    <h2>Last Result</h2>
+                    <h2>Total Runtime</h2>
                     <div id="last_latency_val" class="big-val">-- s</div>
-                    <div id="last_latency_sub" class="sub-val">Total Generation Time</div>
+                    <div id="last_latency_sub" class="sub-val">Summed Test Duration</div>
                 </div>
             </div>
 
@@ -1096,15 +1096,22 @@ def get_dashboard():
                     document.getElementById('ttft_val').innerText =
                         ttft > 0 ? `${Math.round(ttft)} ms` : '-- ms';
 
-                    // Runtime (live counter)
+                    // Current Runtime (live counter)
                     const runtime = data.app?.runtime_ms || 0;
                     document.getElementById('runtime_val').innerText =
                         runtime > 0 ? `${(runtime / 1000).toFixed(1)}s` : '0.0s';
 
-                    // Last Request Latency
-                    const lastLatency = data.app?.last_latency_ms || 0;
+                    // Total Runtime (Sum of all tests + current)
+                    let totalRuntimeMs = 0;
+                    if (data.test_progress && data.test_progress.results) {
+                        Object.values(data.test_progress.results).forEach(r => {
+                            totalRuntimeMs += (r.runtime_ms || 0);
+                        });
+                    }
+                    totalRuntimeMs += runtime;
+
                     document.getElementById('last_latency_val').innerText =
-                        lastLatency > 0 ? `${(lastLatency / 1000).toFixed(1)}s` : '-- s';
+                        totalRuntimeMs > 0 ? `${(totalRuntimeMs / 1000).toFixed(1)}s` : '-- s';
 
                     // TEST PROGRESS
                     if (data.test_progress) {
