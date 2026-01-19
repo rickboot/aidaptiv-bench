@@ -293,18 +293,19 @@ def get_dashboard():
                 <table style="
                     width: 100%;
                     border-collapse: collapse;
-                    background: white;
+                    background: #1a1a1a;
                     border-radius: 8px;
                     overflow: hidden;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+                    border: 1px solid #333;
                 ">
-                    <thead style="background: #f8f9fa;">
+                    <thead style="background: #2a2a2a;">
                         <tr>
-                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #333;">Context</th>
-                            <th style="padding: 12px; text-align: right; font-weight: 600; color: #333;">TTFT</th>
-                            <th style="padding: 12px; text-align: right; font-weight: 600; color: #333;">Runtime</th>
-                            <th style="padding: 12px; text-align: right; font-weight: 600; color: #333;">TPS</th>
-                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #333;">Status</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #aaa; border-bottom: 1px solid #444;">Context</th>
+                            <th style="padding: 12px; text-align: right; font-weight: 600; color: #aaa; border-bottom: 1px solid #444;">TTFT</th>
+                            <th style="padding: 12px; text-align: right; font-weight: 600; color: #aaa; border-bottom: 1px solid #444;">Runtime</th>
+                            <th style="padding: 12px; text-align: right; font-weight: 600; color: #aaa; border-bottom: 1px solid #444;">TPS</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #aaa; border-bottom: 1px solid #444;">Status</th>
                         </tr>
                     </thead>
                     <tbody id="test-results-tbody">
@@ -1175,23 +1176,23 @@ def get_dashboard():
                     const isComplete = !!metrics;
                     
                     const row = document.createElement('tr');
-                    row.style.background = isActive ? '#0ba36022' : 'white';
-                    row.style.borderBottom = '1px solid #eee';
+                    row.style.background = isActive ? '#0ba36033' : 'transparent';
+                    row.style.borderBottom = '1px solid #333';
 
                     const ttft = isComplete ? `${Math.round(metrics.ttft_ms)} ms` : '--';
                     const runtime = isComplete ? `${(metrics.runtime_ms / 1000).toFixed(1)}s` : '--';
                     const tps = isComplete ? metrics.tps.toFixed(1) : '--';
                     
-                    let status = '<span style="color: #999;">Upcoming</span>';
-                    if (isActive) status = '<span style="color: #0ba360; font-weight: bold;">⏳ Running</span>';
-                    else if (isComplete) status = '<span style="color: #3cba92;">✓ Complete</span>';
+                    let status = '<span style="color: #666;">Upcoming</span>';
+                    if (isActive) status = '<span style="color: #0f0; font-weight: bold;">⏳ Running</span>';
+                    else if (isComplete) status = '<span style="color: #0ba360;">✓ Complete</span>';
 
                     row.innerHTML = `
-                        <td style="padding: 12px; color: #333; font-family: monospace;">${formatK(context)}</td>
-                        <td style="padding: 12px; text-align: right; color: #333;">${ttft}</td>
-                        <td style="padding: 12px; text-align: right; color: #333;">${runtime}</td>
-                        <td style="padding: 12px; text-align: right; color: #333;">${tps}</td>
-                        <td style="padding: 12px; text-align: center; color: #333;">
+                        <td style="padding: 12px; color: #fff; font-family: monospace; font-weight: bold;">${formatK(context)}</td>
+                        <td style="padding: 12px; text-align: right; color: #eee;">${ttft}</td>
+                        <td style="padding: 12px; text-align: right; color: #eee;">${runtime}</td>
+                        <td style="padding: 12px; text-align: right; color: #eee;">${tps}</td>
+                        <td style="padding: 12px; text-align: center; color: #eee;">
                             ${status}
                         </td>
                     `;
