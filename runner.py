@@ -35,8 +35,8 @@ class BenchRunner:
             raw = yaml.safe_load(f)
         return BenchmarkConfig(**raw)
 
-    def check_sidecar(self):
-        """Verifies telemetry sidecar is up."""
+    def check_dashboard(self):
+        """Verifies telemetry dashboard is up."""
         try:
             r = requests.get(f"{SIDECAR_URL}/health", timeout=2)
             if r.status_code == 200:
@@ -44,7 +44,7 @@ class BenchRunner:
                 return True
         except requests.exceptions.ConnectionError:
             print(
-                "❌ Telemetry Sidecar NOT found. Please run 'python sidecar.py' in a separate terminal.")
+                "❌ Telemetry Dashboard NOT found. Please run 'python dashboard.py' in a separate terminal.")
             return False
         return False
 
@@ -58,7 +58,7 @@ class BenchRunner:
         try:
             requests.post(f"{SIDECAR_URL}/runs/{self.run_id}/start")
         except Exception:
-            print("⚠️ Failed to start sidecar logging.")
+            print("⚠️ Failed to start dashboard logging.")
 
         # 2. Dump Effective Config
         with open(os.path.join(self.output_dir, "config_effective.yaml"), "w") as f:
@@ -139,7 +139,7 @@ def main():
             sys.exit(1)
 
         runner = BenchRunner(args.config, args.aidaptiv)
-        if runner.check_sidecar():
+        if runner.check_dashboard():
             runner.start_run()
         else:
             sys.exit(1)

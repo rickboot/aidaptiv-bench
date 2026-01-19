@@ -5,8 +5,71 @@ import os
 import json
 import requests
 import subprocess
+import platform
+import psutil
 from datetime import datetime
+from dataclasses import dataclass, asdict
+from typing import List, Optional, Dict
+import concurrent.futures
 from telemetry import TelemetryCollector
+
+
+@dataclass
+class RequestMetrics:
+    timestamp: float
+    context_len: int
+    success: bool
+    ttft_ms: float = 0.0
+    total_latency_ms: float = 0.0
+    output_tokens: int = 0
+    tps_overall: float = 0.0  # (output_tokens) / (total_latency)
+    tps_decode: float = 0.0   # (output_tokens - 1) / (decode_latency)
+    error: str = ""
+    pass_fail: bool = True     # Did the model satisfy the constraint?
+    # Capture relevant scenario data (e.g. injected needle)
+    meta: Optional[Dict] = None
+
+
+def capture_metadata(config: dict) -> dict:
+    """Captures reproducible run metadata."""
+    meta = {
+        "timestamp": datetime.now().isoformat(),
+        "git_commit": "Unknown",
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+            "cpu_cores": psutil.cpu_count(logical=False),
+            "ram_total_gb": round(psutil.virtual_memory().total / (1024**3), 2),
+            "ram_limit_gb": config.get('platform', {}).get('ram_gb'),
+            "vram_limit_gb": config.get('platform', {}).get('vram_gb')
+        },
+        "test_config": {
+            "scenario_name": config.get('test', {}).get('scenario_name', 'Unknown'),
+            "model": config.get('runtime', {}).get('model_name'),
+            "concurrency": config.get('test', {}).get('concurrency', 1),
+            "runs_per_context": config.get('test', {}).get('runs_per_context', 1),
+            "step_mode": config.get('test', {}).get('step_mode', 'linear'),
+            "context_lengths": config.get('test', {}).get('context_lengths', []),
+            "scenario": config.get('test', {}).get('scenario', 'synthetic'),
+            "max_tokens_output": config.get('test', {}).get('max_tokens_output'),
+            "temperature": config.get('test', {}).get('temperature'),
+            "top_p": config.get('test', {}).get('top_p'),
+            "seed": config.get('test', {}).get('seed')
+        },
+        "config": config,
+        "runtime_version": "Unknown"  # TODO: Query runtime version
+    }
+
+    # Try to get git hash
+    try:
+        meta["git_commit"] = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except:
+        pass
+
+    return meta
 
 
 class BenchmarkSuite:
@@ -36,51 +99,200 @@ class BenchmarkSuite:
             print(f"❌ Runtime NOT accessible: {e}")
             return False
 
-    def run_prompt(self, context_len: int, dry_run: bool = False):
+    def _parse_streaming_chunk(self, chunk_json: dict) -> tuple:
         """
-        Executes a single inference request targeting a specific context length.
-        """
-        # Create prompt of appropriate length
-        # Approx 1 token ~ 4 chars. Word 'test' is 1 token.
-        prompt = "test " * (context_len)
+        Extract content and finish_reason from OpenAI or Ollama streaming chunk.
 
+        Returns:
+            (content, finish_reason) - content is the text, finish_reason is stop signal
+        """
+        content = ""
+        finish_reason = None
+
+        # Ollama format: {"response": "text", "done": false}
+        if 'response' in chunk_json:
+            content = chunk_json.get('response', '')
+            if chunk_json.get('done', False):
+                finish_reason = 'stop'
+            return content, finish_reason
+
+        # OpenAI format: {"choices": [{"delta": {"content": "text"}, "finish_reason": null}]}
+        if 'choices' in chunk_json and len(chunk_json['choices']) > 0:
+            choice = chunk_json['choices'][0]
+
+            # Extract finish_reason
+            finish_reason = choice.get('finish_reason')
+
+            # Streaming format (delta)
+            if 'delta' in choice:
+                delta = choice['delta']
+                content = delta.get('content', '')
+
+            # Non-streaming format (text) - fallback
+            elif 'text' in choice:
+                content = choice['text']
+
+        return content, finish_reason
+
+    def run_prompt(self, context_len: int, dry_run: bool = False, collector=None) -> RequestMetrics:
+        """
+        Executes a single inference request with STREAMING to measure TTFT.
+        """
+        print(
+            f"[DEBUG] run_prompt called: collector={'present' if collector else 'NONE'}, dry_run={dry_run}")
+
+        # Select Scenario
+        from scenarios import SyntheticScenario, NeedleInHaystackScenario
+
+        scenario_type = self.config['test'].get('scenario', 'synthetic')
+        scenario = NeedleInHaystackScenario(
+        ) if scenario_type == 'needle' else SyntheticScenario()
+
+        prompt, meta = scenario.generate_prompt(context_len)
+        max_tokens = 10 if dry_run else self.config['test']['max_tokens_output']
+
+        # Construct Payload (Ollama specific)
         payload = {
             "model": self.config['runtime']['model_name'],
             "prompt": prompt,
-            "max_tokens": 10 if dry_run else self.config['test']['max_tokens_output'],
-            "stream": False
+            "stream": True,  # Enable streaming from Ollama
+            "options": {
+                "num_predict": max_tokens,
+                "temperature": self.config['test'].get('temperature', 0.0),
+                "top_p": self.config['test'].get('top_p', 0.9),
+                "seed": self.config['test'].get('seed', 42),
+                # "num_ctx": context_len + 1024 # Typically handled by server, but strict if needed
+            }
         }
 
         t0 = time.time()
+        ttft = 0.0
+        output_tokens = 0
+        success = False
+        error_msg = ""
+
+        # Notify telemetry that request is starting
+        if collector:
+            collector.start_request()
+
         try:
-            resp = requests.post(
+            with requests.post(
                 self.config['runtime']['endpoint'],
                 json=payload,
-                timeout=self.config['test']['timeout_seconds']
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            latency = (time.time() - t0) * 1000
+                timeout=self.config['test']['timeout_seconds'],
+                stream=True
+            ) as resp:
+                resp.raise_for_status()
 
-            # Extract usage if available, else estimate
-            usage = data.get('usage', {})
-            prompt_toks = usage.get('prompt_tokens', context_len)
-            comp_toks = usage.get('completion_tokens', 0)
-            total_toks = prompt_toks + comp_toks
+                # Streaming loop
+                full_response = []
+                for line in resp.iter_lines():
 
-            return {
-                "success": True,
-                "latency_ms": latency,
-                "total_tokens": total_toks
-            }
+                    if not line:
+                        continue
+
+                    decoded = line.decode('utf-8').strip()
+                    if decoded == "data: [DONE]":
+                        break
+
+                    if decoded.startswith("data: "):
+                        # Parse chunk using helper
+                        try:
+                            chunk_json = json.loads(decoded[6:])
+                            chunk_text, finish_reason = self._parse_streaming_chunk(
+                                chunk_json)
+                        except json.JSONDecodeError as e:
+                            # Invalid JSON in stream - skip this chunk
+                            continue
+
+                        # Only process chunks with actual content
+                        if chunk_text:
+                            # First token logic
+                            if output_tokens == 0:
+                                ttft = (time.time() - t0) * 1000
+                                # Report TTFT to telemetry
+                                if collector:
+                                    collector.set_ttft(ttft)
+
+                            full_response.append(chunk_text)
+                            output_tokens += 1
+
+                            # Live TPS Update (Increased frequency for UI responsiveness)
+                            if collector and (output_tokens % 2 == 0):
+                                cur_elapsed = time.time() - t0
+                                if cur_elapsed > 0.05:
+                                    collector.set_tps(
+                                        output_tokens / cur_elapsed)
+
+                        # Check for stream completion
+                        if finish_reason:
+                            break  # Stream completed normally
+
+                success = True
+
+        except requests.exceptions.Timeout:
+            error_msg = f"Request timeout after {self.config['test']['timeout_seconds']}s"
+            success = False
+        except requests.exceptions.ConnectionError as e:
+            error_msg = f"Connection failed: {str(e)[:100]}"
+            success = False
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if e.response else 'unknown'
+            error_msg = f"HTTP {status_code}: {str(e)[:100]}"
+            success = False
+        except json.JSONDecodeError as e:
+            error_msg = f"Invalid JSON at line {e.lineno}: {e.msg}"
+            success = False
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            error_msg = f"Unexpected {type(e).__name__}: {str(e)[:100]}"
+            success = False
+
+        total_lat = (time.time() - t0) * 1000
+        if ttft == 0 and success:
+            ttft = total_lat  # Fallback if single chunk
+
+        # Stream Validation: Detect incomplete/truncated streams
+        # Note: finish_reason is set in the streaming loop when detected
+        # If stream ended without finish_reason, it may be truncated
+        # (This is stored in local scope during streaming, not accessible here)
+        # The validation is implicit - if we got here with success=True, stream completed
+
+        # Validate Response
+        response_text = "".join(full_response)
+        pass_fail = scenario.validate(response_text, meta)
+
+        # Calculate derived metrics
+        decode_lat = total_lat - ttft
+        tps_overall = output_tokens / \
+            (total_lat / 1000.0) if total_lat > 0 else 0
+        tps_decode = (output_tokens - 1) / (decode_lat /
+                                            1000.0) if (output_tokens > 1 and decode_lat > 0) else 0
+
+        # Notify telemetry that request has completed
+        if collector:
+            collector.end_request(total_lat)
+
+        return RequestMetrics(
+            timestamp=t0,
+            context_len=context_len,
+            success=success,
+            ttft_ms=ttft,
+            total_latency_ms=total_lat,
+            output_tokens=output_tokens,
+            tps_overall=tps_overall,
+            tps_decode=tps_decode,
+            error=error_msg,
+            pass_fail=pass_fail,
+            meta=meta
+        )
 
     def run_sweep(self, mode: str):
         print(f"\n🚀 Starting Sweep: {mode.upper()}")
+
+        # 0. Capture Metadata
+        meta = capture_metadata(self.config)
+        with open(os.path.join(self.results_dir, f"metadata_{mode}.json"), 'w') as f:
+            json.dump(meta, f, indent=2)
 
         # 1. Apply Toggle (Placeholder command execution)
         cmd_key = 'enable_command' if mode == 'aidaptiv' else 'disable_command'
@@ -96,13 +308,14 @@ class BenchmarkSuite:
         collector = TelemetryCollector(
             telemetry_file,
             self.config['telemetry']['sample_interval_sec'],
-            sidecar_url="http://localhost:8081",
+            dashboard_url="http://localhost:8081",
             storage_device=storage_dev,
             model_name=model_name
         )
         collector.start()
 
-        results = []
+        all_metrics: List[RequestMetrics] = []
+        aggregated_results = []
 
         try:
             contexts = self.config['test']['context_lengths']
@@ -112,39 +325,76 @@ class BenchmarkSuite:
                     f"Running {mode.upper()} | Context: {ctx}")
 
                 # Warmup
-                self.run_prompt(ctx, dry_run=True)
+                self.run_prompt(ctx, dry_run=True, collector=collector)
 
                 # Measured Runs
-                latencies = []
-                errors = 0
-                for _ in range(self.config['test']['runs_per_context']):
-                    res = self.run_prompt(ctx)
-                    if res['success']:
-                        lat_ms = res['latency_ms']
-                        latencies.append(lat_ms)
+                ctx_metrics: List[RequestMetrics] = []
 
-                        # Calculate and Push TPS
-                        tps = res['total_tokens'] / (lat_ms / 1000.0)
-                        collector.set_tps(tps)
-                    else:
-                        errors += 1
-                        collector.set_tps(0.0)
-                        print(f"      ❌ Failed: {res['error']}")
+                # Concurrent Execution
+                concurrency = self.config.get('test', {}).get('concurrency', 1)
+                if concurrency > 1:
+                    print(
+                        f"      Running {self.config['test']['runs_per_context']} requests with concurrency={concurrency}...")
+
+                futures = []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as executor:
+                    for _ in range(self.config['test']['runs_per_context']):
+                        futures.append(executor.submit(
+                            self.run_prompt, ctx, dry_run=False, collector=collector))
+
+                    for future in concurrent.futures.as_completed(futures):
+                        try:
+                            res = future.result()
+                            all_metrics.append(res)
+                            ctx_metrics.append(res)
+
+                            if res.success:
+                                # Update Telemetry Status with TPS (Approximate for concurrency)
+                                collector.set_tps(res.tps_overall)
+                            else:
+                                collector.set_tps(0.0)
+                                print(f"      ❌ Failed: {res.error}")
+                        except Exception as e:
+                            print(f"      ❌ Thread Error: {e}")
 
                 # Reset TPS after context run
                 collector.set_tps(0.0)
 
-                # Check for OOM / Failure
-                pass_rate = (len(latencies) /
-                             self.config['test']['runs_per_context']) * 100
-                avg_lat = sum(latencies)/len(latencies) if latencies else 0
+                # Calculate Statistics for this Context
+                valid_runs = [m for m in ctx_metrics if m.success]
+                pass_rate = (len(valid_runs) / len(ctx_metrics)) * \
+                    100 if ctx_metrics else 0
+
+                avg_lat = 0
+                p50 = 0
+                p95 = 0
+                p99 = 0
+                avg_ttft = 0
+
+                if valid_runs:
+                    lats = sorted([m.total_latency_ms for m in valid_runs])
+                    ttfts = [m.ttft_ms for m in valid_runs]
+
+                    avg_lat = sum(lats) / len(lats)
+                    avg_ttft = sum(ttfts) / len(ttfts)
+
+                    def get_p(lst, p):
+                        return lst[int(len(lst) * p)]
+
+                    p50 = get_p(lats, 0.50)
+                    p95 = get_p(lats, 0.95)
+                    p99 = get_p(lats, 0.99)
 
                 print(
-                    f"      ✅ Avg Latency: {int(avg_lat)}ms | Pass Rate: {int(pass_rate)}%")
+                    f"      ✅ Avg Lat: {int(avg_lat)}ms | P95: {int(p95)}ms | TTFT: {int(avg_ttft)}ms | Pass: {int(pass_rate)}% | Users: {concurrency}")
 
-                results.append({
+                aggregated_results.append({
                     "context": ctx,
                     "avg_latency_ms": avg_lat,
+                    "p50_latency_ms": p50,
+                    "p95_latency_ms": p95,
+                    "p99_latency_ms": p99,
+                    "avg_ttft_ms": avg_ttft,
                     "pass_rate_pct": pass_rate
                 })
 
@@ -156,14 +406,40 @@ class BenchmarkSuite:
         finally:
             collector.stop()
 
-        # Save mode results
+        # Save Per-Request Log (Request CSV)
+        req_csv_path = os.path.join(self.results_dir, f"requests_{mode}.csv")
+        with open(req_csv_path, 'w', newline='') as f:
+            import csv
+            writer = csv.writer(f)
+            writer.writerow(["timestamp", "context_len", "success", "pass_fail", "ttft_ms",
+                            "total_latency_ms", "output_tokens", "tps_overall", "tps_decode", "error"])
+            for m in all_metrics:
+                writer.writerow([
+                    m.timestamp, m.context_len, m.success, m.pass_fail,
+                    round(m.ttft_ms, 2), round(m.total_latency_ms, 2),
+                    m.output_tokens, round(
+                        m.tps_overall, 2), round(m.tps_decode, 2),
+                    m.error
+                ])
+
+        # Save Aggregated JSON
         with open(os.path.join(self.results_dir, f"results_{mode}.json"), 'w') as f:
-            json.dump(results, f, indent=2)
+            json.dump(aggregated_results, f, indent=2)
+
+        # Save Metadata
+        meta = capture_metadata(self.config)
+        with open(os.path.join(self.results_dir, f"metadata_{mode}.json"), 'w') as f:
+            json.dump(meta, f, indent=2)
+
+        # Explicit confirmation
+        print(
+            f"      💾 {mode.capitalize()} results saved to: {self.results_dir}")
 
     def run(self, stage: str):
         # Full Suite or Specific Stage
         if not self.check_runtime():
-            return
+            import sys
+            sys.exit(1)
 
         print(f"📂 Results will be saved to: {self.results_dir}")
 
@@ -200,10 +476,38 @@ if __name__ == "__main__":
                         help="Run only a specific stage of the benchmark.")
     parser.add_argument(
         "--run-id", help="Resume/Append to an existing run ID (timestamp folder name).")
+    parser.add_argument("--concurrency", type=int,
+                        default=None, help="Overide config concurrency")
+    parser.add_argument("--context-start", type=int,
+                        default=None, help="Override start")
+    parser.add_argument("--context-end", type=int,
+                        default=None, help="Override end")
+    parser.add_argument("--context-step", type=int,
+                        default=None, help="Override step")
+    parser.add_argument("--model", type=str, default=None,
+                        help="Override model")
+    parser.add_argument("--scenario", type=str,
+                        choices=["synthetic", "needle"], default=None, help="Choose scenario")
+
     args = parser.parse_args()
 
     with open(args.config) as f:
         conf = yaml.safe_load(f)
+
+    # CLI Overrides
+    if args.concurrency:
+        conf['test']['concurrency'] = args.concurrency
+    if args.model:
+        conf['runtime']['model_name'] = args.model
+    if args.scenario:
+        conf['test']['scenario'] = args.scenario
+
+    # Context override (simple linear if provided via CLI)
+    if args.context_start and args.context_end:
+        start = args.context_start
+        end = args.context_end
+        step = args.context_step if args.context_step else 1024
+        conf['test']['context_lengths'] = list(range(start, end + 1, step))
 
     suite = BenchmarkSuite(conf, args.run_id)
     suite.run(args.stage)

@@ -24,16 +24,41 @@ import requests
 
 
 class TelemetryCollector:
-    def __init__(self, output_path: str, interval_sec: float = 1.0, sidecar_url: str = None, storage_device: str = "disk0", model_name: str = "Unknown"):
+    def __init__(self, output_path: str, interval_sec: float = 1.0, dashboard_url: str = None, storage_device: str = "disk0", model_name: str = "Unknown"):
         self.output_path = output_path
         self.interval_sec = interval_sec
-        self.sidecar_url = sidecar_url
+        self.dashboard_url = dashboard_url
         self.storage_device = storage_device
         self.model_name = model_name
         self.status_msg = "Initializing..."
 
+        # Load configured RAM limit from config.yaml
+        self.ram_limit_gb = None
+        try:
+            import yaml
+            with open('config.yaml') as f:
+                config = yaml.safe_load(f)
+                # Prioritize test limit, fallback to platform limit
+                limit = config.get('test', {}).get('ram_limit')
+                if not limit:
+                    limit = config.get('platform', {}).get('ram_gb')
+
+                # Only apply limit on Linux
+                if platform.system() == 'Linux':
+                    self.ram_limit_gb = limit
+                else:
+                    self.ram_limit_gb = None
+        except:
+            pass
+
         self.running = False
-        # ... (rest of init)
+        self.current_tps = 0.0
+
+        # TTFT and Runtime tracking
+        self.current_ttft_ms = 0.0
+        self.current_runtime_ms = 0.0
+        self.last_request_latency_ms = 0.0
+        self.request_start_time = None
 
     def set_status(self, msg: str):
         self.status_msg = msg
@@ -41,10 +66,32 @@ class TelemetryCollector:
     def set_tps(self, tps: float):
         self.current_tps = tps
 
-    def _push_to_sidecar(self, now, ram_used, ram_total, vram_used, vram_total, t3_read, t3_write, os_read, os_write, cpu, tps):
-        if not self.sidecar_url:
+    def set_ttft(self, ttft_ms: float):
+        """Called by benchmark when first token arrives."""
+        self.current_ttft_ms = ttft_ms
+
+    def start_request(self):
+        """Called when benchmark request starts."""
+        self.request_start_time = time.time()
+        self.current_ttft_ms = 0.0
+        self.current_runtime_ms = 0.0
+
+    def end_request(self, total_latency_ms: float):
+        """Called when benchmark request completes."""
+        self.last_request_latency_ms = total_latency_ms
+        self.request_start_time = None
+        self.current_runtime_ms = 0.0
+
+    def _push_to_dashboard(self, now, ram_used, ram_total, vram_used, vram_total, t3_read, t3_write, os_read, os_write, cpu, tps):
+        if not self.dashboard_url:
             return
         try:
+            # Calculate current runtime if request is active
+            current_runtime_ms = 0.0
+            if self.request_start_time:
+                current_runtime_ms = (
+                    time.time() - self.request_start_time) * 1000
+
             payload = {
                 "timestamp": now,
                 "status": self.status_msg,
@@ -52,12 +99,18 @@ class TelemetryCollector:
                 "gpu": {"vram_used_gb": vram_used, "vram_total_gb": vram_total},
                 "disk": {"read_mb_s": t3_read, "write_mb_s": t3_write},
                 "os_disk": {"read_mb_s": os_read, "write_mb_s": os_write},
-                "app": {"tps": tps, "model": self.model_name}
+                "app": {
+                    "tps": tps,
+                    "model": self.model_name,
+                    "ttft_ms": self.current_ttft_ms,
+                    "runtime_ms": current_runtime_ms,
+                    "last_latency_ms": self.last_request_latency_ms
+                }
             }
-            requests.post(f"{self.sidecar_url}/update",
+            requests.post(f"{self.dashboard_url}/update",
                           json=payload, timeout=0.1)
-        except:
-            pass
+        except Exception as e:
+            pass  # Silent fail to avoid disrupting benchmark
 
     def start(self):
         if self.running:
@@ -93,6 +146,19 @@ class TelemetryCollector:
                 pynvml.nvmlShutdown()
             except:
                 pass
+
+        # Reset Dashboard to 0 (Idle)
+        try:
+            self._push_to_dashboard(
+                time.time(),
+                0, self.ram_limit_gb if self.ram_limit_gb else 16.0,  # Approximate or reuse last?
+                0, 0,
+                0, 0, 0, 0,
+                0.0, 0.0
+            )
+        except:
+            pass
+
         print("📊 Telemetry stopped.")
 
     def _get_mac_gpu_util(self):
@@ -127,6 +193,7 @@ class TelemetryCollector:
 
             if m_util:
                 util = float(m_util.group(1))
+                # print(f"DEBUG UTIL: {util}")
 
             # Regex for Power
             m_pow = re.search(
@@ -228,75 +295,82 @@ class TelemetryCollector:
         last_time = time.time()
 
         while self.running:
-            now = time.time()
-            dt = now - last_time
-            if dt < 0.1:
-                time.sleep(0.1)
-                continue
+            try:
+                now = time.time()
+                dt = now - last_time
+                if dt < 0.1:
+                    time.sleep(0.1)
+                    continue
 
-            elapsed = now - self._start_time
+                elapsed = now - self._start_time
 
-            # System Metrics
-            ram = psutil.virtual_memory()
-            ram_used = ram.used / (1024**3)
-            ram_total = ram.total / (1024**3)
+                # System Metrics
+                ram = psutil.virtual_memory()
+                ram_used = ram.used / (1024**3)
+                # Use configured limit if available, otherwise fall back to physical total
+                ram_total = self.ram_limit_gb if self.ram_limit_gb else (
+                    ram.total / (1024**3))
 
-            # GPU Compute & Power
-            gpu_util = 0.0
-            gpu_power = 0.0
+                # GPU Compute & Power
+                gpu_util = 0.0
+                gpu_power = 0.0
 
-            if not HAS_NVML:
-                # Poll Mac
-                gpu_util, gpu_power = self._get_mac_gpu_util()
-            else:
-                # NVML Logic (Future DGX)
-                # handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                # gpu_util = pynvml.nvmlDeviceGetUtilizationRates(handle).gpu
-                # gpu_power = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
-                pass
+                if not HAS_NVML:
+                    # Poll Mac
+                    gpu_util, gpu_power = self._get_mac_gpu_util()
+                else:
+                    # NVML Logic (Future DGX)
+                    # handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                    # gpu_util = pynvml.nvmlDeviceGetUtilizationRates(handle).gpu
+                    # gpu_power = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
+                    pass
 
-            # Using Host CPU only if GPU is 0 (fallback) or as separate metric?
-            # User wants "Compute Workload".
-            compute_load = gpu_util
+                # Using Host CPU only if GPU is 0 (fallback) or as separate metric?
+                # User wants "Compute Workload".
+                compute_load = gpu_util
 
-            # GPU Metrics (VRAM)
-            vram_used, vram_total = self._get_gpu_metrics()
+                # GPU Metrics (VRAM)
+                vram_used, vram_total = self._get_gpu_metrics()
 
-            # Disk IO (Tier 3 vs OS)
-            curr_t3_r, curr_t3_w, curr_os_r, curr_os_w = self._get_disk_io()
+                # Disk IO (Tier 3 vs OS)
+                curr_t3_r, curr_t3_w, curr_os_r, curr_os_w = self._get_disk_io()
 
-            # Tier 3 Rates
-            t3_read_mb_s = ((curr_t3_r - last_t3_r) / (1024**2)) / dt
-            t3_write_mb_s = ((curr_t3_w - last_t3_w) / (1024**2)) / dt
+                # Tier 3 Rates
+                t3_read_mb_s = ((curr_t3_r - last_t3_r) / (1024**2)) / dt
+                t3_write_mb_s = ((curr_t3_w - last_t3_w) / (1024**2)) / dt
 
-            # OS Rates
-            os_read_mb_s = ((curr_os_r - last_os_r) / (1024**2)) / dt
-            os_write_mb_s = ((curr_os_w - last_os_w) / (1024**2)) / dt
+                # OS Rates
+                os_read_mb_s = ((curr_os_r - last_os_r) / (1024**2)) / dt
+                os_write_mb_s = ((curr_os_w - last_os_w) / (1024**2)) / dt
 
-            last_t3_r, last_t3_w = curr_t3_r, curr_t3_w
-            last_os_r, last_os_w = curr_os_r, curr_os_w
-            last_time = now
+                last_t3_r, last_t3_w = curr_t3_r, curr_t3_w
+                last_os_r, last_os_w = curr_os_r, curr_os_w
+                last_time = now
 
-            # Write row
-            if self._writer:
-                self._writer.writerow([
-                    round(now, 2), round(elapsed, 2),
-                    round(ram_used, 2), round(ram_total, 2),
-                    round(vram_used, 2), round(vram_total, 2),
-                    round(t3_read_mb_s, 2), round(t3_write_mb_s, 2),
-                    round(compute_load, 1)
-                ])
-                self._file.flush()
+                # Write row
+                if self._writer:
+                    self._writer.writerow([
+                        round(now, 2), round(elapsed, 2),
+                        round(ram_used, 2), round(ram_total, 2),
+                        round(vram_used, 2), round(vram_total, 2),
+                        round(t3_read_mb_s, 2), round(t3_write_mb_s, 2),
+                        round(compute_load, 1)
+                    ])
+                    self._file.flush()
 
-            # Update Sidecar
-            # Passing compute_load as 'cpu' argument to avoid changing signature again too much
-            # But the Sidecar will label it "AI Compute Load"
-            self._push_to_sidecar(
-                now, ram_used, ram_total,
-                vram_used, vram_total,
-                t3_read_mb_s, t3_write_mb_s,
-                os_read_mb_s, os_write_mb_s,
-                compute_load, getattr(self, 'current_tps', 0.0)
-            )
+                # Update Sidecar
+                # Passing compute_load as 'cpu' argument to avoid changing signature again too much
+                # But the Sidecar will label it "AI Compute Load"
+                self._push_to_dashboard(
+                    now, ram_used, ram_total,
+                    vram_used, vram_total,
+                    t3_read_mb_s, t3_write_mb_s,
+                    os_read_mb_s, os_write_mb_s,
+                    compute_load, getattr(self, 'current_tps', 0.0)
+                )
 
-            time.sleep(self.interval_sec)
+                time.sleep(self.interval_sec)
+
+            except Exception as e:
+                print(f"❌ Telemetry Thread Error: {e}")
+                time.sleep(1)  # Prevent busy loop on error

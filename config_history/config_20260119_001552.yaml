@@ -1,0 +1,28 @@
+platform:
+  name: local_mac_16gb
+  ram_gb: 10.0
+  vram_gb: 11.0
+runtime:
+  backend: vllm
+  endpoint: http://localhost:11434/v1/completions
+  model_name: llama3.1:70b
+aidaptiv:
+  toggle_method: manual
+  storage_device: nvme0n1
+test:
+  context_lengths:
+  - 1024
+  - 2048
+  - 4096
+  concurrency: 1
+  runs_per_context: 2
+  warmup_runs: 1
+  max_tokens_output: 50
+  temperature: 0.0
+  top_p: 0.9
+  seed: 42
+  timeout_seconds: 300
+telemetry:
+  sample_interval_sec: 1.0
+  collect_disk_io: true
+  output_file: metrics.csv

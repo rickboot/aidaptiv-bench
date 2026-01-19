@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-01-18T22:39:05.689171",
+  "git_commit": "1132df0f3891440a45e71cddb16f81a54787262f",
+  "platform": {
+    "system": "Darwin",
+    "release": "24.3.0",
+    "machine": "arm64",
+    "cpu_cores": 10,
+    "ram_total_gb": 16.0
+  },
+  "config": {
+    "platform": {
+      "name": "local_mac_16gb",
+      "ram_gb": 16,
+      "vram_gb": 24
+    },
+    "runtime": {
+      "backend": "vllm",
+      "endpoint": "http://localhost:11434/v1/completions",
+      "model_name": "llama3.1:8b"
+    },
+    "aidaptiv": {
+      "toggle_method": "manual",
+      "storage_device": "nvme0n1"
+    },
+    "test": {
+      "context_lengths": [
+        2048,
+        4096,
+        6144,
+        8192,
+        10240,
+        12288
+      ],
+      "runs_per_context": 2,
+      "warmup_runs": 1,
+      "max_tokens_output": 50,
+      "temperature": 0.0,
+      "timeout_seconds": 300
+    },
+    "telemetry": {
+      "sample_interval_sec": 1.0,
+      "collect_disk_io": true,
+      "output_file": "metrics.csv"
+    }
+  },
+  "runtime_version": "Unknown"
+}

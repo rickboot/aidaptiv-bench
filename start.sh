@@ -35,7 +35,7 @@ fi
 # Start the dashboard
 echo ""
 echo "🖥️  Starting Dashboard..."
-python3 sidecar.py &
+python3 dashboard.py &
 DASHBOARD_PID=$!
 sleep 2
 

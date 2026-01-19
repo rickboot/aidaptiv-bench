@@ -81,13 +81,20 @@ If you need to reboot the proper machine to enable aiDAPTIV:
     ```
 
 ## 📊 Output
-
 Results are saved to `results/<TIMESTAMP>/`:
 
-*   `summary.json`: Aggregated statistics (Pass rate, Average Latency).
-*   `ttft_comparison.png`: Bar chart comparing Latency/OOMs.
-*   `ram_timeline_test.png`: System memory usage over time.
-*   `metrics_*.csv`: Raw telemetry data.
+- **`results_{mode}.json`**: Aggregated stats (P50/P95 latency, Pass %, Throughput).
+- **`requests_{mode}.csv`**: detailed per-request logs (TTFT, Decode Time, Output Tokens).
+- **`metadata_{mode}.json`**: System verification (Git commit, RAM/CPU specs).
+- **`metrics_{mode}.csv`**: Second-by-second system telemetry (RAM, VRAM, I/O).
+
+## 📐 Metrics Explained
+This tool measures Engineer-Grade metrics to ensure rigorous evaluation:
+
+- **TTFT (Time To First Token)**: Latency from request sent to first token received. Measures "responsiveness".
+- **Decode TPS**: Tokens Per Second during generation phase. Measures "throughput".
+- **P95 Latency**: 95th Percentile latency. Measures "consistency" (tail latency).
+- **Pass Rate**: Percentage of requests that completed successfully without OOM or Timeout.
 
 ## 🗺️ Roadmap
 

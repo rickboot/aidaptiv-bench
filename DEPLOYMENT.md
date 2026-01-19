@@ -122,7 +122,7 @@ Windows support is currently in planning.
 1. Install Python 3.10+ manually.
 2. Install dependencies: `pip install -r requirements.txt` (or see `start.sh` for list).
 3. Install Ollama for Windows.
-4. Run the dashboard: `python sidecar.py`.
+4. Run the dashboard: `python dashboard.py`.
 5. Run benchmarks manually via PowerShell: `python benchmark.py ...`.
 
 ---
