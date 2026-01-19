@@ -280,7 +280,7 @@ def get_dashboard():
                         <label for="step-mode">Step Mode</label>
                         <select id="step-mode">
                             <option value="linear">Linear (+)</option>
-                            <option value="geometric">Geometric (x2)</option>
+                            <option value="geometric" selected>Geometric (x2)</option>
                         </select>
                     </div>
 
@@ -343,7 +343,7 @@ def get_dashboard():
         </div>
 
         <!-- REPORTS VIEW -->
-        <div id="view-reports" class="container" style="display:block;">
+        <div id="view-reports" class="container" style="display:none;">
             <div id="reports-list">
                 <h2>Benchmark History</h2>
                 <table id="reports-table" style="display: table !important; width: 100% !important; visibility: visible !important;">
