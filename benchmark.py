@@ -319,8 +319,14 @@ class BenchmarkSuite:
 
         try:
             contexts = self.config['test']['context_lengths']
-            for ctx in contexts:
+            total_contexts = len(contexts)
+
+            for idx, ctx in enumerate(contexts, 1):
                 print(f"   📋 Testing Context: {ctx}...")
+
+                # Notify telemetry of test progress
+                collector.set_test_progress(ctx, total_contexts)
+
                 collector.set_status(
                     f"Running {mode.upper()} | Context: {ctx}")
 
@@ -397,6 +403,12 @@ class BenchmarkSuite:
                     "avg_ttft_ms": avg_ttft,
                     "pass_rate_pct": pass_rate
                 })
+
+                # Save test result to telemetry for dashboard display
+                if valid_runs:
+                    avg_tps = sum(
+                        m.tps_overall for m in valid_runs) / len(valid_runs)
+                    collector.save_test_result(ctx, avg_ttft, avg_lat, avg_tps)
 
                 # Early exit on failure (OOM usually kills ability to proceed)
                 if pass_rate < 50:

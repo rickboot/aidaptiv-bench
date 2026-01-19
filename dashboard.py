@@ -34,6 +34,7 @@ class DashboardUpdate(BaseModel):
     disk: dict
     os_disk: dict
     app: dict
+    test_progress: dict = {}  # New field for test progress tracking
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -128,6 +129,22 @@ def get_dashboard():
         <!-- LIVE DASHBOARD -->
         <div id="view-dashboard" class="container" style="display:block;">
             <div id="status" class="status-bar">Waiting for Telemetry...</div>
+            
+            <!-- Current Test Status -->
+            <div id="test-status" style="
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                display: none;
+            ">
+                <div style="font-size: 14px; opacity: 0.9;">Current Test</div>
+                <div id="test-status-text" style="font-size: 20px; font-weight: 600; margin-top: 5px;">
+                    Testing Context: 3072 tokens (2 of 3)
+                </div>
+            </div>
+            
             <div class="grid">
                 <div class="card">
                     <h2>Tier 1: Active AI Memory</h2>
@@ -181,6 +198,34 @@ def get_dashboard():
                         <div id="last_latency_sub" class="sub-val">Total Duration</div>
                     </div>
                 </div>
+            </div>
+            
+            <!-- Test Results Table -->
+            <div id="test-results-section" style="margin-top: 30px; display: none;">
+                <h2 style="font-size: 16px; color: #888; margin: 0 0 15px 0; font-weight: 500;">
+                    TEST RESULTS
+                </h2>
+                <table style="
+                    width: 100%;
+                    border-collapse: collapse;
+                    background: white;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                ">
+                    <thead style="background: #f8f9fa;">
+                        <tr>
+                            <th style="padding: 12px; text-align: left; font-weight: 600; color: #333;">Context</th>
+                            <th style="padding: 12px; text-align: right; font-weight: 600; color: #333;">TTFT</th>
+                            <th style="padding: 12px; text-align: right; font-weight: 600; color: #333;">Runtime</th>
+                            <th style="padding: 12px; text-align: right; font-weight: 600; color: #333;">TPS</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600; color: #333;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="test-results-tbody">
+                        <!-- Rows populated by JavaScript -->
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -951,8 +996,58 @@ def get_dashboard():
                     const lastLatency = data.app?.last_latency_ms || 0;
                     document.getElementById('last_latency_val').innerText = 
                         lastLatency > 0 ? `${(lastLatency / 1000).toFixed(1)}s` : '-- s';
+                    
+                    // TEST PROGRESS
+                    if (data.test_progress) {
+                        const progress = data.test_progress;
+                        
+                        // Show/hide status bar
+                        if (progress.current_context > 0) {
+                            document.getElementById('test-status').style.display = 'block';
+                            const completedTests = Object.keys(progress.results).length;
+                            const currentIdx = completedTests + 1;
+                            document.getElementById('test-status-text').innerText = 
+                                `Testing Context: ${progress.current_context} tokens (${currentIdx} of ${progress.total_contexts})`;
+                        } else {
+                            document.getElementById('test-status').style.display = 'none';
+                        }
+                        
+                        // Update results table
+                        if (Object.keys(progress.results).length > 0) {
+                            document.getElementById('test-results-section').style.display = 'block';
+                            updateResultsTable(progress.results, progress.current_context);
+                        } else {
+                            document.getElementById('test-results-section').style.display = 'none';
+                        }
+                    }
                 } catch(e) {
                     console.log(e);
+                }
+            }
+            
+            function updateResultsTable(results, currentContext) {
+                const tbody = document.getElementById('test-results-tbody');
+                tbody.innerHTML = '';
+                
+                // Sort by context size
+                const sorted = Object.entries(results).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+                
+                for (const [context, metrics] of sorted) {
+                    const isActive = parseInt(context) === currentContext;
+                    const row = document.createElement('tr');
+                    row.style.background = isActive ? '#f0f7ff' : 'white';
+                    row.style.borderBottom = '1px solid #eee';
+                    
+                    row.innerHTML = `
+                        <td style="padding: 12px; color: #333;">${context} tokens</td>
+                        <td style="padding: 12px; text-align: right; color: #333;">${Math.round(metrics.ttft_ms)} ms</td>
+                        <td style="padding: 12px; text-align: right; color: #333;">${(metrics.runtime_ms / 1000).toFixed(1)}s</td>
+                        <td style="padding: 12px; text-align: right; color: #333;">${metrics.tps.toFixed(1)}</td>
+                        <td style="padding: 12px; text-align: center; color: #333;">
+                            ${isActive ? '⏳ Running' : '✓ Complete'}
+                        </td>
+                    `;
+                    tbody.appendChild(row);
                 }
             }
             async function saveConfig() {

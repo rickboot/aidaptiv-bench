@@ -60,6 +60,11 @@ class TelemetryCollector:
         self.last_request_latency_ms = 0.0
         self.request_start_time = None
 
+        # Test progress tracking
+        self.current_context = 0
+        self.total_contexts = 0
+        self.test_results = {}  # {context_len: {ttft_ms, runtime_ms, tps}}
+
     def set_status(self, msg: str):
         self.status_msg = msg
 
@@ -81,6 +86,19 @@ class TelemetryCollector:
         self.last_request_latency_ms = total_latency_ms
         self.request_start_time = None
         self.current_runtime_ms = 0.0
+
+    def set_test_progress(self, current_context: int, total_contexts: int):
+        """Called when starting a new context test."""
+        self.current_context = current_context
+        self.total_contexts = total_contexts
+
+    def save_test_result(self, context_len: int, ttft_ms: float, runtime_ms: float, tps: float):
+        """Called when a context test completes."""
+        self.test_results[context_len] = {
+            "ttft_ms": ttft_ms,
+            "runtime_ms": runtime_ms,
+            "tps": tps
+        }
 
     def _push_to_dashboard(self, now, ram_used, ram_total, vram_used, vram_total, t3_read, t3_write, os_read, os_write, cpu, tps):
         if not self.dashboard_url:
@@ -105,6 +123,11 @@ class TelemetryCollector:
                     "ttft_ms": self.current_ttft_ms,
                     "runtime_ms": current_runtime_ms,
                     "last_latency_ms": self.last_request_latency_ms
+                },
+                "test_progress": {
+                    "current_context": self.current_context,
+                    "total_contexts": self.total_contexts,
+                    "results": self.test_results
                 }
             }
             requests.post(f"{self.dashboard_url}/update",
