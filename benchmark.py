@@ -325,10 +325,12 @@ class BenchmarkSuite:
                 print(f"   📋 Testing Context: {ctx}...")
 
                 # Notify telemetry of test progress
-                collector.set_test_progress(ctx, total_contexts)
+                collector.set_test_progress(
+                    ctx, total_contexts, planned_contexts=contexts)
 
-                collector.set_status(
-                    f"Running {mode.upper()} | Context: {ctx}")
+                scenario_name = self.config['test'].get(
+                    'scenario_name', mode.upper())
+                collector.set_status(f"Running {scenario_name}")
 
                 # Warmup
                 self.run_prompt(ctx, dry_run=True, collector=collector)
@@ -500,6 +502,8 @@ if __name__ == "__main__":
                         help="Override model")
     parser.add_argument("--scenario", type=str,
                         choices=["synthetic", "needle"], default=None, help="Choose scenario")
+    parser.add_argument(
+        "--step-mode", choices=["linear", "geometric"], default="linear")
 
     args = parser.parse_args()
 
@@ -514,12 +518,23 @@ if __name__ == "__main__":
     if args.scenario:
         conf['test']['scenario'] = args.scenario
 
-    # Context override (simple linear if provided via CLI)
     if args.context_start and args.context_end:
         start = args.context_start
         end = args.context_end
         step = args.context_step if args.context_step else 1024
-        conf['test']['context_lengths'] = list(range(start, end + 1, step))
+        mode = args.step_mode if args.step_mode else conf['test'].get(
+            'step_mode', 'linear')
+
+        lengths = []
+        if mode == 'geometric':
+            curr = start
+            while curr <= end:
+                lengths.append(curr)
+                curr *= 2
+        else:
+            lengths = list(range(start, end + 1, step))
+
+        conf['test']['context_lengths'] = lengths
 
     suite = BenchmarkSuite(conf, args.run_id)
     suite.run(args.stage)

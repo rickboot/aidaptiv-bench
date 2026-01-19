@@ -52,6 +52,7 @@ def get_dashboard():
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script>
             const IS_LINUX = __IS_LINUX__;
+            const formatK = (val) => val >= 1024 ? `${Math.round(val / 1024)}K` : val;
         </script>
         <style>
             body { font-family: 'Segoe UI', monospace; background: #111; color: #eee; padding: 0; margin: 0; }
@@ -62,7 +63,7 @@ def get_dashboard():
             .nav-btn:hover { color: #fff; }
 
             .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
-            .status-bar { background: #222; padding: 15px; border-radius: 5px; margin-bottom: 20px; color: #fff; font-size: 1.2em; border-left: 5px solid #0f0; }
+            .status-bar { background: #222; padding: 20px; border-radius: 8px; margin-bottom: 20px; color: #fff; font-size: 1.6em; font-weight: 600; border-left: 8px solid #0f0; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
 
             /* Dashboard Grid */
             .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
@@ -116,6 +117,50 @@ def get_dashboard():
             .copy-btn { position: absolute; top: 10px; right: 10px; background: #333; color: #fff; border: none; padding: 5px 10px; border-radius: 3px; cursor: pointer; font-size: 0.9em; }
             .copy-btn:hover { background: #444; }
             .chart-container { background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; margin-bottom: 20px; height: 400px; position: relative; }
+            
+            .section-header { 
+                display: flex; 
+                align-items: center; 
+                gap: 10px; 
+                margin: 40px 0 15px 0; 
+                padding-bottom: 10px;
+                border-bottom: 1px solid #333;
+            }
+            .section-header h2 { 
+                margin: 0; 
+                font-size: 14px; 
+                color: #888; 
+                text-transform: uppercase; 
+                letter-spacing: 1.5px; 
+                font-weight: 600;
+            }
+            .live-dot {
+                width: 8px;
+                height: 8px;
+                background: #0f0;
+                border-radius: 50%;
+                box-shadow: 0 0 10px #0f0;
+                animation: pulse 1.5s infinite;
+            }
+            @keyframes pulse {
+                0% { opacity: 1; transform: scale(1); }
+                50% { opacity: 0.4; transform: scale(1.2); }
+                100% { opacity: 1; transform: scale(1); }
+            }
+            .summary-bar {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 20px;
+                margin-bottom: 30px;
+            }
+            .stat-card {
+                background: #1a1a1a;
+                border-left: 4px solid #0f0;
+                padding: 15px 20px;
+                border-radius: 4px;
+            }
+            .stat-card label { display: block; font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+            .stat-card .val { font-size: 1.8em; font-weight: bold; color: #fff; }
         </style>
     </head>
     <body>
@@ -130,21 +175,27 @@ def get_dashboard():
         <div id="view-dashboard" class="container" style="display:block;">
             <div id="status" class="status-bar">Waiting for Telemetry...</div>
 
-            <!-- Current Test Status -->
+            <!-- Active Run Status -->
             <div id="test-status" style="
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
                 color: white;
-                padding: 15px 20px;
+                padding: 20px;
                 border-radius: 8px;
-                margin-bottom: 20px;
+                margin-bottom: 30px;
                 display: none;
+                box-shadow: 0 10px 30px rgba(11, 163, 96, 0.2);
             ">
-                <div style="font-size: 14px; opacity: 0.9;">Current Test</div>
-                <div id="test-status-text" style="font-size: 20px; font-weight: 600; margin-top: 5px;">
-                    Testing Context: 3072 tokens (2 of 3)
+                <div style="font-size: 12px; opacity: 0.8; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Current Benchmark Step</div>
+                <div id="test-status-text" style="font-size: 26px; font-weight: 700; margin-top: 5px; font-family: 'Segoe UI', sans-serif;">
+                    Testing Context: 3K (2 of 3)
                 </div>
             </div>
 
+            <!-- 1. SYSTEM MONITOR (REAL-TIME) -->
+            <div class="section-header">
+                <div class="live-dot"></div>
+                <h2>System Monitor (Real-Time Hardware)</h2>
+            </div>
             <div class="grid">
                 <div class="card">
                     <h2>Tier 1: Active AI Memory</h2>
@@ -167,41 +218,61 @@ def get_dashboard():
                     <div id="os_sub" class="sub-val">System I/O</div>
                 </div>
                 <div class="card">
-                    <h2>Throughput</h2>
-                    <div id="tps_val" class="big-val">0.0</div>
-                    <div id="tps_sub" class="sub-val">Tokens / Sec</div>
-                </div>
-                <div class="card">
                     <h2>AI Compute Load</h2>
                     <div id="cpu_val" class="big-val">0%</div>
                     <div id="cpu_sub" class="sub-val">GPU / NPU Utilization</div>
                 </div>
             </div>
 
-            <!-- LATENCY METRICS -->
-            <div style="margin-top: 30px;">
-                <h2 style="font-size: 16px; color: #888; margin: 0 0 15px 0; font-weight: 500;">LATENCY METRICS</h2>
-                <div class="grid" style="grid-template-columns: repeat(3, 1fr);">
-                    <div class="card">
-                        <h2>TTFT</h2>
-                        <div id="ttft_val" class="big-val">-- ms</div>
-                        <div id="ttft_sub" class="sub-val">Time to First Token</div>
-                    </div>
-                    <div class="card">
-                        <h2>Runtime</h2>
-                        <div id="runtime_val" class="big-val">0.0s</div>
-                        <div id="runtime_sub" class="sub-val">Current Request</div>
-                    </div>
-                    <div class="card">
-                        <h2>Last Request</h2>
-                        <div id="last_latency_val" class="big-val">-- s</div>
-                        <div id="last_latency_sub" class="sub-val">Total Duration</div>
-                    </div>
+            <!-- 2. ACTIVE TEST PERFORMANCE -->
+            <div class="section-header">
+                <div class="live-dot" style="background: #00e5ff; box-shadow: 0 0 10px #00e5ff;"></div>
+                <h2>Active Test Performance</h2>
+            </div>
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));">
+                <div class="card" style="border-top: 3px solid #0ba360;">
+                    <h2>Throughput</h2>
+                    <div id="tps_val" class="big-val">0.0</div>
+                    <div id="tps_sub" class="sub-val">Tokens / Sec</div>
+                </div>
+                <div class="card">
+                    <h2>TTFT</h2>
+                    <div id="ttft_val" class="big-val">-- ms</div>
+                    <div id="ttft_sub" class="sub-val">Time to First Token</div>
+                </div>
+                <div class="card">
+                    <h2>Live Runtime</h2>
+                    <div id="runtime_val" class="big-val">0.0s</div>
+                    <div id="runtime_sub" class="sub-val">Executing Request...</div>
+                </div>
+                <div class="card">
+                    <h2>Last Result</h2>
+                    <div id="last_latency_val" class="big-val">-- s</div>
+                    <div id="last_latency_sub" class="sub-val">Total Generation Time</div>
+                </div>
+            </div>
+
+            <!-- 3. RUN SUMMARY (AGGREGATE) -->
+            <div class="section-header">
+                <h2>Run Progress & Summary</h2>
+            </div>
+            <div class="summary-bar">
+                <div class="stat-card" style="border-left-color: #0ba360;">
+                    <label>Success Rate</label>
+                    <div id="summary-success" class="val">--</div>
+                </div>
+                <div class="stat-card" style="border-left-color: #00e5ff;">
+                    <label>Max Stable Context</label>
+                    <div id="summary-max-ctx" class="val">--</div>
+                </div>
+                <div class="stat-card" style="border-left-color: #f90;">
+                    <label>Avg Throughout</label>
+                    <div id="summary-avg-tps" class="val">--</div>
                 </div>
             </div>
 
             <!-- Test Results Table -->
-            <div id="test-results-section" style="margin-top: 30px; display: none;">
+            <div id="test-results-section" style="margin-top: 30px; display: block;">
                 <h2 style="font-size: 16px; color: #888; margin: 0 0 15px 0; font-weight: 500;">
                     TEST RESULTS
                 </h2>
@@ -316,7 +387,7 @@ def get_dashboard():
                 </div>
 
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <button class="btn-primary" onclick="launchBenchmark()" style="background: #f90; width: 100%; padding: 15px; font-size: 1.2em;">🚀 Launch Benchmark</button>
+                    <button class="btn-primary" onclick="launchBenchmark()" style="background: #f90; width: 100%; padding: 15px; font-size: 1.2em;">Run Benchmark</button>
                 </div>
 
                 <div id="run-status" style="margin-top: 20px; padding: 15px; background: #1a1a1a; border-radius: 5px; border: 1px solid #333; display: none;">
@@ -696,8 +767,8 @@ def get_dashboard():
                 execSummary.innerHTML = `
                     <div class="summary-card" style="border-top: 4px solid #f90;">
                         <h4>Max Viable Context</h4>
-                        <div class="val">${(aiMax/1024).toFixed(0)}K</div>
-                        <div class="sub">vs Standard: ${(baseMax/1024).toFixed(0)}K</div>
+                        <div class="val">${formatK(aiMax)}</div>
+                        <div class="sub">vs Standard: ${formatK(baseMax)}</div>
                     </div>
                     <div class="summary-card" style="border-top: 4px solid #0f0;">
                         <h4>Stability Score</h4>
@@ -824,7 +895,7 @@ def get_dashboard():
                 // Render Latency Chart
                 new Chart(ctxLat, {
                     type: 'line',
-                    data: { labels: labels.map(l => (l/1024).toFixed(0) + 'K'), datasets: latDatasets },
+                    data: { labels: labels.map(formatK), datasets: latDatasets },
                     options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid:{
                         color:'#333'} }, x: { grid:{color:'#333'} } }, plugins: { legend: { labels: { color: '#ccc' } } } }
                 });
@@ -906,7 +977,7 @@ def get_dashboard():
                     const lat = a ? a.avg_latency_ms.toFixed(0)+'ms' : (b ? b.avg_latency_ms.toFixed(0)+'ms' : '-');
 
                     html += `<tr style="border-bottom:1px solid #333;">
-                        <td style="padding:10px; color:#fff; font-weight:bold;">${(ctx/1024).toFixed(0)}K</td>
+                        <td style="padding:10px; color:#fff; font-weight:bold;">${formatK(ctx)}</td>
                         <td style="padding:10px;">${getStatus(b)}</td>
                         <td style="padding:10px;">${getStatus(a)}</td>
                         <td style="padding:10px; color:#ccc;">${ttft}</td>
@@ -1031,21 +1102,38 @@ def get_dashboard():
                             const completedTests = Object.keys(progress.results).length;
                             const currentIdx = completedTests + 1;
                             document.getElementById('test-status-text').innerText =
-                                `Testing Context: ${progress.current_context} tokens (${currentIdx} of ${progress.total_contexts})`;
+                                `Testing Context: ${formatK(progress.current_context)} (${currentIdx} of ${progress.total_contexts})`;
                         } else {
                             document.getElementById(
                                 'test-status').style.display = 'none';
                         }
 
                         // Update results table
-                        if (Object.keys(progress.results).length > 0) {
-                            document.getElementById(
-                                'test-results-section').style.display = 'block';
-                            updateResultsTable(
-                                progress.results, progress.current_context);
+                        if (Object.keys(progress.results).length > 0 || (progress.planned_contexts && progress.planned_contexts.length > 0)) {
+                            document.getElementById('test-results-section').style.display = 'block';
+                            updateResultsTable(progress.results, progress.current_context, progress.planned_contexts);
+
+                            // Calculate Summary Stats
+                            const results = Object.values(progress.results);
+                            const totalPlanned = progress.total_contexts || 1;
+                            const completedCount = results.length;
+                            
+                            // Success Rate
+                            const successRate = ((completedCount / totalPlanned) * 100).toFixed(0);
+                            document.getElementById('summary-success').innerText = `${successRate}%`;
+                            
+                            // Max Stable Context
+                            const contexts = Object.keys(progress.results).map(Number).sort((a,b) => b-a);
+                            const maxCtx = contexts.length > 0 ? contexts[0] : 0;
+                            document.getElementById('summary-max-ctx').innerText = maxCtx > 0 ? formatK(maxCtx) : '--';
+
+                            // Avg TPS
+                            const avgTps = results.length > 0 
+                                ? (results.reduce((acc, r) => acc + r.tps, 0) / results.length).toFixed(1)
+                                : '--';
+                            document.getElementById('summary-avg-tps').innerText = avgTps !== '--' ? `${avgTps} tps` : '--';
                         } else {
-                            document.getElementById(
-                                'test-results-section').style.display = 'none';
+                            document.getElementById('test-results-section').style.display = 'none';
                         }
                     }
                 } catch(e) {
@@ -1053,26 +1141,39 @@ def get_dashboard():
                 }
             }
 
-            function updateResultsTable(results, currentContext) {
+            function updateResultsTable(results, currentContext, plannedContexts) {
                 const tbody = document.getElementById('test-results-tbody');
                 tbody.innerHTML = '';
 
-                // Sort by context size
-                const sorted = Object.entries(results).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+                // Combine planned contexts and results to show the full schedule
+                const contextsToShow = plannedContexts && plannedContexts.length > 0 
+                    ? plannedContexts 
+                    : Object.keys(results).map(Number).sort((a,b) => a-b);
 
-                for (const [context, metrics] of sorted) {
-                    const isActive = parseInt(context) === currentContext;
+                for (const context of contextsToShow) {
+                    const metrics = results[context];
+                    const isActive = context === currentContext;
+                    const isComplete = !!metrics;
+                    
                     const row = document.createElement('tr');
-                    row.style.background = isActive ? '#f0f7ff' : 'white';
+                    row.style.background = isActive ? '#0ba36022' : 'white';
                     row.style.borderBottom = '1px solid #eee';
 
+                    const ttft = isComplete ? `${Math.round(metrics.ttft_ms)} ms` : '--';
+                    const runtime = isComplete ? `${(metrics.runtime_ms / 1000).toFixed(1)}s` : '--';
+                    const tps = isComplete ? metrics.tps.toFixed(1) : '--';
+                    
+                    let status = '<span style="color: #999;">Upcoming</span>';
+                    if (isActive) status = '<span style="color: #0ba360; font-weight: bold;">⏳ Running</span>';
+                    else if (isComplete) status = '<span style="color: #3cba92;">✓ Complete</span>';
+
                     row.innerHTML = `
-                        <td style="padding: 12px; color: #333;">${context} tokens</td>
-                        <td style="padding: 12px; text-align: right; color: #333;">${Math.round(metrics.ttft_ms)} ms</td>
-                        <td style="padding: 12px; text-align: right; color: #333;">${(metrics.runtime_ms / 1000).toFixed(1)}s</td>
-                        <td style="padding: 12px; text-align: right; color: #333;">${metrics.tps.toFixed(1)}</td>
+                        <td style="padding: 12px; color: #333; font-family: monospace;">${formatK(context)}</td>
+                        <td style="padding: 12px; text-align: right; color: #333;">${ttft}</td>
+                        <td style="padding: 12px; text-align: right; color: #333;">${runtime}</td>
+                        <td style="padding: 12px; text-align: right; color: #333;">${tps}</td>
                         <td style="padding: 12px; text-align: center; color: #333;">
-                            ${isActive ? '⏳ Running' : '✓ Complete'}
+                            ${status}
                         </td>
                     `;
                     tbody.appendChild(row);
@@ -1138,7 +1239,7 @@ def get_dashboard():
                 const ramLimit = document.getElementById('ram-limit').value;
                 const swapLimit = document.getElementById('swap-limit').value;
 
-                let cmd = `sudo python3 benchmark.py --model ${model} --start ${start} --end ${end} --step ${step} --step-mode ${stepMode} --concurrency ${concurrency} --runs ${runsPerContext} --name "${name}"`;
+                let cmd = `sudo python3 benchmark.py --model ${model} --context-start ${start} --context-end ${end} --context-step ${step} --step-mode ${stepMode} --concurrency ${concurrency}`;
 
                 // Append limit command ONLY if on Linux and values are present
                 if (IS_LINUX && ramLimit && swapLimit) {
@@ -1154,6 +1255,9 @@ def get_dashboard():
                 document.getElementById('generated-command').innerText = displayCmd;
                 document.getElementById('command-output').style.display = 'block';
                 document.getElementById('command-output').dataset.cmd = cmd;
+
+                // Sync the planned table in Dashboard view immediately
+                updateResultsTable({}, 0, contexts);
             }
 
             function copyCommand() {
@@ -1185,7 +1289,7 @@ def get_dashboard():
                 }
 
                 // Format context sizes (e.g., 2048 -> "2K")
-                const formatK = (val) => val >= 1024 ? `${Math.round(val / 1024)}K` : val;
+                // Using global formatK
 
                 const stepStr = stepMode === 'geometric' ? 'double' : `${formatK(step)}-step`;
                 const userStr = concurrency > 1 ? `_${concurrency}users` : '';
@@ -1221,20 +1325,25 @@ def get_dashboard():
                     if (ramInput) {
                         ramInput.disabled = true;
                         ramInput.title = "Memory limiting is only available on Linux.";
-                        ramInput.parentElement.querySelector(
-                            'label').innerText += " (system-managed)";
+                        ramInput.parentElement.querySelector('label').innerText += " (Linux only)";
                     }
                     if (swapInput) {
                         swapInput.disabled = true;
                         swapInput.title = "Memory limiting is only available on Linux.";
-                        swapInput.parentElement.querySelector(
-                            'label').innerText += " (system-managed)";
+                        swapInput.parentElement.querySelector('label').innerText += " (Linux only)";
                     }
                 }
             });
 
+            let isLaunching = false;
             async function launchBenchmark() {
+                if (isLaunching) return;
+                isLaunching = true;
+                
                 const statusDiv = document.getElementById('run-status');
+                const btn = document.querySelector('button.btn-primary');
+                if (btn) btn.disabled = true;
+
                 const statusText = document.getElementById('run-status-text');
                 statusDiv.style.display = 'block';
 
@@ -1246,7 +1355,7 @@ def get_dashboard():
                     await saveConfig(); // This updates /api/config
 
                     // 2. Trigger the run
-                    statusText.innerText = 'Launching benchmark...';
+                    statusText.innerText = 'Running benchmark...';
 
                     updateCommandUI(); // Ensure command is fresh
                     const cmd = document.getElementById('command-output').dataset.cmd || 'sudo python3 benchmark.py';
@@ -1276,6 +1385,9 @@ def get_dashboard():
                     statusText.innerText = '❌ Failed to launch: ' + e.message;
                     statusText.style.color = '#f44';
                     console.error(e);
+                } finally {
+                    isLaunching = false;
+                    if (btn) btn.disabled = false;
                 }
             }
 
@@ -1506,16 +1618,16 @@ def run_benchmark(payload: dict = None):
         cwd = os.getcwd()
 
         # Build the command to run in Terminal
-        # Escape quotes for AppleScript
-        final_cmd = f'cd \\"{cwd}\\" && {cmd_to_run}'
+        # Escape quotes and backslashes for AppleScript string literal
+        escaped_cmd = cmd_to_run.replace('\\', '\\\\').replace('"', '\\"')
+        escaped_cwd = cwd.replace('\\', '\\\\').replace('"', '\\"')
+        final_cmd = f'cd \\"{escaped_cwd}\\" && {escaped_cmd}'
 
         # Use osascript to open Terminal and run the command
-        # Added 'activate' to force window to top
+        # Simplified to ensure exactly one window/tab is targeted
         applescript = f'''tell application "Terminal"
     activate
-    set newTab to do script "{final_cmd}"
-    delay 0.5
-    set frontmost of window 1 to true
+    do script "{final_cmd}"
 end tell'''
 
         subprocess.run(['osascript', '-e', applescript],

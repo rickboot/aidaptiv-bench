@@ -63,6 +63,7 @@ class TelemetryCollector:
         # Test progress tracking
         self.current_context = 0
         self.total_contexts = 0
+        self.planned_contexts = []
         self.test_results = {}  # {context_len: {ttft_ms, runtime_ms, tps}}
 
     def set_status(self, msg: str):
@@ -87,10 +88,12 @@ class TelemetryCollector:
         self.request_start_time = None
         self.current_runtime_ms = 0.0
 
-    def set_test_progress(self, current_context: int, total_contexts: int):
+    def set_test_progress(self, current_context: int, total_contexts: int, planned_contexts: list = None):
         """Called when starting a new context test."""
         self.current_context = current_context
         self.total_contexts = total_contexts
+        if planned_contexts:
+            self.planned_contexts = planned_contexts
 
     def save_test_result(self, context_len: int, ttft_ms: float, runtime_ms: float, tps: float):
         """Called when a context test completes."""
@@ -127,6 +130,7 @@ class TelemetryCollector:
                 "test_progress": {
                     "current_context": self.current_context,
                     "total_contexts": self.total_contexts,
+                    "planned_contexts": self.planned_contexts,
                     "results": self.test_results
                 }
             }
