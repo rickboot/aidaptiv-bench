@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+
+# Mac
+.DS_Store
+
+# Logs
+*.log
+dashboard.log
+sidecar.log
+ollama.log
+debug.log
+
+# IDE
+.vscode/
+.idea/
+
+# Benchmark Specific
+config_history/
+results/
