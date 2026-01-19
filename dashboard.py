@@ -238,7 +238,26 @@ def get_dashboard():
                 </div>
             </div>
 
-            <!-- 2. ACTIVE TEST PERFORMANCE -->
+            <!-- 2. RUN SUMMARY (AGGREGATE) -->
+            <div class="section-header">
+                <h2>Run Progress & Summary</h2>
+            </div>
+            <div class="summary-bar">
+                <div class="stat-card success">
+                    <label>Success Rate</label>
+                    <div id="summary-success" class="val">0%</div>
+                </div>
+                <div class="stat-card context">
+                    <label>Max Stable Context</label>
+                    <div id="summary-max-ctx" class="val">--</div>
+                </div>
+                <div class="stat-card throughput">
+                    <label>Avg Throughput</label>
+                    <div id="summary-avg-tps" class="val">--</div>
+                </div>
+            </div>
+
+            <!-- 3. ACTIVE TEST PERFORMANCE -->
             <div class="section-header">
                 <div class="live-dot" style="background: #00e5ff; box-shadow: 0 0 10px #00e5ff;"></div>
                 <h2>Active Test Performance</h2>
@@ -263,25 +282,6 @@ def get_dashboard():
                     <h2>Last Result</h2>
                     <div id="last_latency_val" class="big-val">-- s</div>
                     <div id="last_latency_sub" class="sub-val">Total Generation Time</div>
-                </div>
-            </div>
-
-            <!-- 3. RUN SUMMARY (AGGREGATE) -->
-            <div class="section-header">
-                <h2>Run Progress & Summary</h2>
-            </div>
-            <div class="summary-bar">
-                <div class="stat-card success">
-                    <label>Success Rate</label>
-                    <div id="summary-success" class="val">0%</div>
-                </div>
-                <div class="stat-card context">
-                    <label>Max Stable Context</label>
-                    <div id="summary-max-ctx" class="val">--</div>
-                </div>
-                <div class="stat-card throughput">
-                    <label>Avg Throughput</label>
-                    <div id="summary-avg-tps" class="val">--</div>
                 </div>
             </div>
 
