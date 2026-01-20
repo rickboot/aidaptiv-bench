@@ -13,7 +13,6 @@ test:
   context_lengths:
   - 1024
   - 2048
-  - 4096
   concurrency: 1
   runs_per_context: 1
   warmup_runs: 1
@@ -22,7 +21,7 @@ test:
   top_p: 0.9
   seed: 42
   timeout_seconds: 300
-  scenario_name: Llama-8B_1K-4K_double
+  scenario_name: Llama-8B_1K-2K_double
   step_mode: geometric
   ram_limit: 16.0
   swap_limit: 32.0

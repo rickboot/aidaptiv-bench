@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
 import uvicorn
 import json
@@ -462,13 +462,12 @@ def get_dashboard():
                 <button class="back-btn" onclick="closeReport()">← Back to List</button>
                 <div id="report-title-area" style="display: flex; align-items: flex-start; justify-content: space-between;">
                     <div>
-                        <h2 id="detail-title" style="margin-bottom: 5px;">Report Details</h2>
-                        <p id="detail-subtitle" style="color: #666; margin-top: 0; margin-bottom: 20px;"></p>
+                        <h2 id="detail-title" style="margin-bottom: 2px; font-size: 1.5em;">Report Details</h2>
+                        <p id="detail-subtitle" style="color: #888; margin-top: 0; margin-bottom: 10px; font-size: 0.9em;"></p>
                     </div>
-                    <div style="display: flex; gap: 10px;">
-                        <button class="btn-primary" id="btn-download-json" style="font-size: 0.8em; padding: 8px 15px;">Download Report (JSON)</button>
-                        <button class="btn-primary" id="btn-download-csv-base" style="font-size: 0.8em; padding: 8px 15px; background: #00ffff; color: #000;">Download Baseline (CSV)</button>
-                        <button class="btn-primary" id="btn-download-csv-ai" style="font-size: 0.8em; padding: 8px 15px; background: #ff00ff; color: #000;">Download aiDAPTIV (CSV)</button>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;">
+                        <button class="btn-primary" id="btn-download-json" style="font-size: 0.75em; padding: 6px 12px; background: #2e7d32; color: #fff; border: 1px solid #1b5e20;">Report JSON</button>
+                        <button class="btn-primary" id="btn-download-zip" style="font-size: 0.75em; padding: 6px 12px; background: #2e7d32; color: #fff; border: 1px solid #1b5e20;">Full Logs (.zip)</button>
                     </div>
                 </div>
 
@@ -483,6 +482,11 @@ def get_dashboard():
                     </div>
                 </details>
 
+                <details id="test-results-wrapper" open style="margin-bottom: 30px;">
+                    <summary style="font-size: 1.3em; color: #fff; background: #222;">Test Results</summary>
+                    <div id="detail-tables" style="padding: 20px; background: #1a1a1a; border: 1px solid #333; margin-top: -1px;"></div>
+                </details>
+
                 <details id="performance-charts" open>
                     <summary style="font-size: 1.3em; color: #fff; background: #222;">Performance Charts</summary>
                     <div id="detail-charts">
@@ -491,10 +495,9 @@ def get_dashboard():
                     </div>
                 </details>
 
-                <div id="detail-tables"></div>
 
-                <h3 style="margin-top: 40px; color: #666; font-size: 0.9em;">Raw Data</h3>
-                <pre id="detail-json" style="max-height: 200px; font-size: 0.8em;"></pre>
+
+
             </div>
         </div>
 
@@ -757,8 +760,7 @@ def get_dashboard():
 
                 // Attach download handlers
                 document.getElementById('btn-download-json').onclick = () => downloadReport(id);
-                document.getElementById('btn-download-csv-base').onclick = () => downloadCsv(id, 'baseline');
-                document.getElementById('btn-download-csv-ai').onclick = () => downloadCsv(id, 'aidaptiv');
+                document.getElementById('btn-download-zip').onclick = () => downloadZip(id);
 
                 // --- 1. Test Scenario (Prominent Card) ---
                 const configDetails = document.getElementById('config-details');
@@ -979,7 +981,7 @@ def get_dashboard():
                         }, 
                         plugins: { 
                             legend: { labels: { color: '#ccc' } },
-                            title: { display: true, text: 'Hardware Resource Utilization (Memory Timeline)', color: '#fff', font: { size: 16 } }
+                            title: { display: true, text: 'Memory Usage', color: '#fff', font: { size: 16 } }
                         }, 
                         animation: false 
                     }
@@ -996,8 +998,7 @@ def get_dashboard():
                 const aiMap = {}; (data.aidaptiv||[]).forEach(r => aiMap[r.context] = r);
 
                 let html = `
-                    <div style="margin-top: 30px;">
-                        <h3 style="color: #fff; border-bottom: 2px solid #555; padding-bottom: 10px;">Detailed Metrics by Context Size</h3>
+                    <div>
                         <div style="background:#222; border:1px solid #444; padding:15px; margin-bottom:20px; border-radius:8px; font-size:0.9em; color:#ccc;">
                             <strong style="color:#fff;">ℹ️ Guide to Metrics:</strong>
                             <ul style="margin:5px 0 0 20px; padding:0;">
@@ -1054,8 +1055,7 @@ def get_dashboard():
                 html += `</tbody></table></div>`;
                 tableArea.innerHTML = html;
 
-                document.getElementById(
-                    'detail-json').innerText = JSON.stringify(data, null, 2);
+
             }
 
             function closeReport() {
@@ -1076,8 +1076,8 @@ def get_dashboard():
                 a.click();
             }
 
-            async function downloadCsv(id, stage) {
-                const res = await fetch(`/api/reports/${id}/csv?stage=${stage}`);
+            async function downloadCsv(id, stage, type='metrics') {
+                const res = await fetch(`/api/reports/${id}/csv?stage=${stage}&log_type=${type}`);
                 const data = await res.json();
                 if (!data.csv) {
                     alert("No CSV data found for this stage.");
@@ -1089,6 +1089,21 @@ def get_dashboard():
                 a.href = url;
                 a.download = `telemetry_${id}_${stage}.csv`;
                 a.click();
+            }
+
+            async function downloadZip(id) {
+                const res = await fetch(`/api/reports/${id}/zip`);
+                if (res.status !== 200) { alert('Error downloading zip'); return; }
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `aidaptiv_report_${id}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
             }
 
             async function poll() {
@@ -1249,15 +1264,15 @@ def get_dashboard():
                     const tps = isComplete ? metrics.tps.toFixed(1) : '--';
                     
                     let status = '<span style="color: #666;">Upcoming</span>';
-                    if (isActive) status = '<span style="color: #0f0; font-weight: bold;">⏳ Running</span>';
-                    else if (isComplete) status = '<span style="color: #0ba360;">✓ Complete</span>';
+                    if (isActive) status = '<span style="color: #0f0; font-weight: bold;">Running</span>';
+                    else if (isComplete) status = '<span style="color: #0ba360;">Complete</span>';
 
                     row.innerHTML = `
-                        <td style="padding: 12px; color: #fff; font-family: monospace; font-weight: bold;">${formatK(context)}</td>
-                        <td style="padding: 12px; text-align: right; color: #eee;">${ttft}</td>
-                        <td style="padding: 12px; text-align: right; color: #eee;">${runtime}</td>
-                        <td style="padding: 12px; text-align: right; color: #eee;">${tps}</td>
-                        <td style="padding: 12px; text-align: center; color: #eee;">
+                        <td style="padding: 12px; font-size: 16px; color: #fff; font-family: monospace; font-weight: bold;">${formatK(context)}</td>
+                        <td style="padding: 12px; font-size: 16px; text-align: right; color: #eee;">${ttft}</td>
+                        <td style="padding: 12px; font-size: 16px; text-align: right; color: #eee;">${runtime}</td>
+                        <td style="padding: 12px; font-size: 16px; text-align: right; color: #eee;">${tps}</td>
+                        <td style="padding: 12px; font-size: 16px; text-align: center; color: #eee;">
                             ${status}
                         </td>
                     `;
@@ -1605,25 +1620,57 @@ def get_report(run_id: str):
     return data
 
 
+@app.get("/api/reports/{run_id}/zip")
+def get_report_zip(run_id: str):
+    """Download all artifacts for a run as a ZIP file."""
+    run_dir = os.path.join("results", run_id)
+    if not os.path.exists(run_dir):
+        return {"error": "Run not found"}
+
+    import io
+    import zipfile
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for root, dirs, files in os.walk(run_dir):
+            for file in files:
+                abs_path = os.path.join(root, file)
+                zip_file.write(abs_path, arcname=file)
+
+    zip_buffer.seek(0)
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename=aidaptiv_report_{run_id}.zip"}
+    )
+
+
 @app.get("/api/reports/{run_id}/csv")
-def get_report_csv(run_id: str, stage: str = "all"):
-    """Get CSV data for charts, optionally filter by stage."""
+def get_report_csv(run_id: str, stage: str = "all", log_type: str = "metrics"):
+    """
+    Get CSV data for charts or logs.
+    stage: 'baseline' | 'aidaptiv'
+    log_type: 'metrics' (Hardware/System) | 'requests' (Performance/Latency)
+    """
     run_dir = os.path.join("results", run_id)
     target_file = None
 
+    prefix = log_type if log_type in ["metrics", "requests"] else "metrics"
+
     if stage == "baseline":
-        target_file = os.path.join(run_dir, "metrics_baseline.csv")
+        target_file = os.path.join(run_dir, f"{prefix}_baseline.csv")
     elif stage == "aidaptiv":
-        target_file = os.path.join(run_dir, "metrics_aidaptiv.csv")
+        target_file = os.path.join(run_dir, f"{prefix}_aidaptiv.csv")
     else:
-        # Fallback to first found
-        csv_files = glob.glob(os.path.join(run_dir, "metrics_*.csv"))
+        # Fallback to first found metrics
+        csv_files = glob.glob(os.path.join(run_dir, f"{prefix}_*.csv"))
         if csv_files:
             target_file = csv_files[0]
 
     if target_file and os.path.exists(target_file):
         with open(target_file, 'r') as f:
-            return {"csv": f.read(), "stage": stage}
+            return {"csv": f.read(), "stage": stage, "type": prefix}
 
     return {"csv": "", "error": "File not found"}
 

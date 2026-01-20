@@ -154,7 +154,8 @@ class TelemetryCollector:
             "ram_used_gb", "ram_total_gb",
             "vram_used_gb", "vram_total_gb",
             "disk_read_mb_s", "disk_write_mb_s",
-            "cpu_pct"
+            "cpu_pct",
+            "context_len", "tps"
         ])
 
         self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -383,7 +384,9 @@ class TelemetryCollector:
                         round(ram_used, 2), round(ram_total, 2),
                         round(vram_used, 2), round(vram_total, 2),
                         round(t3_read_mb_s, 2), round(t3_write_mb_s, 2),
-                        round(compute_load, 1)
+                        round(compute_load, 1),
+                        self.current_context, round(
+                            getattr(self, 'current_tps', 0.0), 2)
                     ])
                     self._file.flush()
 
