@@ -780,7 +780,10 @@ def get_dashboard():
                 const execSummary = document.getElementById('executive-summary');
 
                 // Calculate Metrics
-                const getMaxContext = (rows) => Math.max(...(rows || []).map(r => r.context || 0));
+                const getMaxContext = (rows) => {
+                    if (!rows || rows.length === 0) return 0;
+                    return Math.max(...rows.map(r => r.context || 0));
+                };
                 const totalTokens = (data.aidaptiv || []).reduce((acc, r) => acc + (r.context * (r.run_count || 1)), 0);
                 // Note: accurate token count needs 'runs * context', approximation here if run_count missing
 
