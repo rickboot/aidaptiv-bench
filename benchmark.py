@@ -482,37 +482,41 @@ class BenchmarkSuite:
                     break
 
         finally:
+            # Save Per-Request Log (Request CSV)
+            try:
+                req_csv_path = os.path.join(
+                    self.results_dir, f"requests_{mode}.csv")
+                with open(req_csv_path, 'w', newline='') as f:
+                    import csv
+                    writer = csv.writer(f)
+                    writer.writerow(["timestamp", "context_len", "success", "pass_fail", "ttft_ms",
+                                    "total_latency_ms", "prompt_tokens", "completion_tokens", "tps_overall", "tps_prefill", "tps_decode", "error"])
+                    for m in all_metrics:
+                        writer.writerow([
+                            m.timestamp, m.context_len, m.success, m.pass_fail,
+                            round(m.ttft_ms, 2), round(m.total_latency_ms, 2),
+                            m.prompt_tokens, m.completion_tokens,
+                            round(m.tps_overall, 2), round(
+                                m.tps_prefill, 2), round(m.tps_decode, 2),
+                            m.error
+                        ])
+
+                # Save Aggregated JSON
+                with open(os.path.join(self.results_dir, f"results_{mode}.json"), 'w') as f:
+                    json.dump(aggregated_results, f, indent=2)
+
+                # Save Metadata
+                meta = capture_metadata(self.config)
+                with open(os.path.join(self.results_dir, f"metadata_{mode}.json"), 'w') as f:
+                    json.dump(meta, f, indent=2)
+
+                # Explicit confirmation
+                print(
+                    f"      💾 {mode.capitalize()} results saved to: {self.results_dir}")
+            except Exception as e:
+                print(f"      ❌ Error saving results: {e}")
+
             collector.stop()
-
-        # Save Per-Request Log (Request CSV)
-        req_csv_path = os.path.join(self.results_dir, f"requests_{mode}.csv")
-        with open(req_csv_path, 'w', newline='') as f:
-            import csv
-            writer = csv.writer(f)
-            writer.writerow(["timestamp", "context_len", "success", "pass_fail", "ttft_ms",
-                            "total_latency_ms", "prompt_tokens", "completion_tokens", "tps_overall", "tps_prefill", "tps_decode", "error"])
-            for m in all_metrics:
-                writer.writerow([
-                    m.timestamp, m.context_len, m.success, m.pass_fail,
-                    round(m.ttft_ms, 2), round(m.total_latency_ms, 2),
-                    m.prompt_tokens, m.completion_tokens,
-                    round(m.tps_overall, 2), round(
-                        m.tps_prefill, 2), round(m.tps_decode, 2),
-                    m.error
-                ])
-
-        # Save Aggregated JSON
-        with open(os.path.join(self.results_dir, f"results_{mode}.json"), 'w') as f:
-            json.dump(aggregated_results, f, indent=2)
-
-        # Save Metadata
-        meta = capture_metadata(self.config)
-        with open(os.path.join(self.results_dir, f"metadata_{mode}.json"), 'w') as f:
-            json.dump(meta, f, indent=2)
-
-        # Explicit confirmation
-        print(
-            f"      💾 {mode.capitalize()} results saved to: {self.results_dir}")
 
     def run(self, stage: str):
         # Full Suite or Specific Stage
