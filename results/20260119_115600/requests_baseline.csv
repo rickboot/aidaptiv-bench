@@ -1,2 +1,0 @@
-timestamp,context_len,success,pass_fail,ttft_ms,total_latency_ms,output_tokens,tps_overall,tps_decode,error
-1768852579.935842,1024,True,True,14458.02,17971.9,66,3.67,18.5,

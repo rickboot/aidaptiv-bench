@@ -175,6 +175,8 @@ class TelemetryCollector:
                 pass
 
         # Reset Dashboard to 0 (Idle)
+        self.status_msg = "Idle"
+        self.current_context = 0
         try:
             self._push_to_dashboard(
                 time.time(),

@@ -21,9 +21,13 @@ class RequestMetrics:
     success: bool
     ttft_ms: float = 0.0
     total_latency_ms: float = 0.0
-    output_tokens: int = 0
-    tps_overall: float = 0.0  # (output_tokens) / (total_latency)
-    tps_decode: float = 0.0   # (output_tokens - 1) / (decode_latency)
+    output_tokens: int = 0      # Deprecated alias for completion_tokens
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    tps_overall: float = 0.0    # (completion_tokens) / (total_latency)
+    tps_prefill: float = 0.0    # (prompt_tokens) / (ttft)
+    # (completion_tokens - 1) / (total_latency - ttft)
+    tps_decode: float = 0.0
     error: str = ""
     pass_fail: bool = True     # Did the model satisfy the constraint?
     # Capture relevant scenario data (e.g. injected needle)
@@ -101,38 +105,49 @@ class BenchmarkSuite:
 
     def _parse_streaming_chunk(self, chunk_json: dict) -> tuple:
         """
-        Extract content and finish_reason from OpenAI or Ollama streaming chunk.
+        Extract content, finish_reason, and usage stats from OpenAI/Ollama chunk.
 
         Returns:
-            (content, finish_reason) - content is the text, finish_reason is stop signal
+            (content, finish_reason, usage)
         """
         content = ""
         finish_reason = None
+        usage = {}
 
-        # Ollama format: {"response": "text", "done": false}
+        # Ollama format:
+        # {
+        #   "response": "text", "done": false,
+        #   "prompt_eval_count": 12, "eval_count": 50, ... (only on done=true)
+        # }
         if 'response' in chunk_json:
             content = chunk_json.get('response', '')
             if chunk_json.get('done', False):
                 finish_reason = 'stop'
-            return content, finish_reason
+                # Extract Usage Stats
+                if 'prompt_eval_count' in chunk_json:
+                    usage['prompt_tokens'] = chunk_json['prompt_eval_count']
+                if 'eval_count' in chunk_json:
+                    usage['completion_tokens'] = chunk_json['eval_count']
+            return content, finish_reason, usage
 
-        # OpenAI format: {"choices": [{"delta": {"content": "text"}, "finish_reason": null}]}
+        # OpenAI format:
+        # {"choices": [...], "usage": {...}}
         if 'choices' in chunk_json and len(chunk_json['choices']) > 0:
             choice = chunk_json['choices'][0]
-
-            # Extract finish_reason
             finish_reason = choice.get('finish_reason')
 
-            # Streaming format (delta)
             if 'delta' in choice:
-                delta = choice['delta']
-                content = delta.get('content', '')
-
-            # Non-streaming format (text) - fallback
+                content = choice['delta'].get('content', '')
             elif 'text' in choice:
                 content = choice['text']
 
-        return content, finish_reason
+        # Check for usage in OpenAI format (often separate chunk or at end)
+        if 'usage' in chunk_json:
+            u = chunk_json['usage']
+            usage['prompt_tokens'] = u.get('prompt_tokens', 0)
+            usage['completion_tokens'] = u.get('completion_tokens', 0)
+
+        return content, finish_reason, usage
 
     def run_prompt(self, context_len: int, dry_run: bool = False, collector=None) -> RequestMetrics:
         """
@@ -168,6 +183,8 @@ class BenchmarkSuite:
         t0 = time.time()
         ttft = 0.0
         output_tokens = 0
+        prompt_tokens_count = 0
+        completion_tokens_count = 0
         success = False
         error_msg = ""
 
@@ -199,8 +216,16 @@ class BenchmarkSuite:
                         # Parse chunk using helper
                         try:
                             chunk_json = json.loads(decoded[6:])
-                            chunk_text, finish_reason = self._parse_streaming_chunk(
+                            chunk_json = json.loads(decoded[6:])
+                            chunk_text, finish_reason, usage = self._parse_streaming_chunk(
                                 chunk_json)
+
+                            # Accumulate usage stats if present (Ollama sends at end)
+                            if usage:
+                                if 'prompt_tokens' in usage:
+                                    prompt_tokens_count = usage['prompt_tokens']
+                                if 'completion_tokens' in usage:
+                                    completion_tokens_count = usage['completion_tokens']
                         except json.JSONDecodeError as e:
                             # Invalid JSON in stream - skip this chunk
                             continue
@@ -262,11 +287,35 @@ class BenchmarkSuite:
         pass_fail = scenario.validate(response_text, meta)
 
         # Calculate derived metrics
-        decode_lat = total_lat - ttft
-        tps_overall = output_tokens / \
-            (total_lat / 1000.0) if total_lat > 0 else 0
-        tps_decode = (output_tokens - 1) / (decode_lat /
-                                            1000.0) if (output_tokens > 1 and decode_lat > 0) else 0
+        total_lat = (time.time() - t0) * 1000
+
+        # Metric Calculations
+        # 1. Fallback for token counts if not provided by API
+        if prompt_tokens_count == 0:
+            prompt_tokens_count = int(len(prompt) / 4)  # Rough estimate
+
+        # Use simple counter if usage stats missing
+        if completion_tokens_count == 0:
+            completion_tokens_count = output_tokens
+
+        # 2. Calculate TPS
+        tps_overall = 0.0
+        tps_pre = 0.0
+        tps_dec = 0.0
+
+        # Overall: Total Tokens / Total Time
+        if total_lat > 0:
+            tps_overall = completion_tokens_count / (total_lat / 1000.0)
+
+        # Prefill: Prompt Tokens / TTFT
+        if ttft > 0:
+            tps_pre = prompt_tokens_count / (ttft / 1000.0)
+
+        # Decode: (Output - 1) / (Total - TTFT)
+        # We subtract 1 because the first token is generated during the TTFT window
+        decode_time_ms = total_lat - ttft
+        if decode_time_ms > 0 and completion_tokens_count > 1:
+            tps_dec = (completion_tokens_count - 1) / (decode_time_ms / 1000.0)
 
         # Notify telemetry that request has completed
         if collector:
@@ -278,11 +327,15 @@ class BenchmarkSuite:
             success=success,
             ttft_ms=ttft,
             total_latency_ms=total_lat,
-            output_tokens=output_tokens,
+            output_tokens=completion_tokens_count,  # Deprecated legacy field
+            prompt_tokens=prompt_tokens_count,
+            completion_tokens=completion_tokens_count,
             tps_overall=tps_overall,
-            tps_decode=tps_decode,
+            tps_prefill=tps_pre,
+            tps_decode=tps_dec,
             error=error_msg,
-            pass_fail=pass_fail,
+            # TODO: Actual grading logic
+            pass_fail=meta.get('pass_fail', True),
             meta=meta
         )
 
@@ -393,6 +446,15 @@ class BenchmarkSuite:
                     p95 = get_p(lats, 0.95)
                     p99 = get_p(lats, 0.99)
 
+                # Calculate TPS averages
+                avg_tps_pre = 0.0
+                avg_tps_dec = 0.0
+                if valid_runs:
+                    avg_tps_pre = sum(
+                        m.tps_prefill for m in valid_runs) / len(valid_runs)
+                    avg_tps_dec = sum(
+                        m.tps_decode for m in valid_runs) / len(valid_runs)
+
                 print(
                     f"      ✅ Avg Lat: {int(avg_lat)}ms | P95: {int(p95)}ms | TTFT: {int(avg_ttft)}ms | Pass: {int(pass_rate)}% | Users: {concurrency}")
 
@@ -403,6 +465,8 @@ class BenchmarkSuite:
                     "p95_latency_ms": p95,
                     "p99_latency_ms": p99,
                     "avg_ttft_ms": avg_ttft,
+                    "tps_prefill": avg_tps_pre,
+                    "tps_decode": avg_tps_dec,
                     "pass_rate_pct": pass_rate
                 })
 
@@ -426,13 +490,14 @@ class BenchmarkSuite:
             import csv
             writer = csv.writer(f)
             writer.writerow(["timestamp", "context_len", "success", "pass_fail", "ttft_ms",
-                            "total_latency_ms", "output_tokens", "tps_overall", "tps_decode", "error"])
+                            "total_latency_ms", "prompt_tokens", "completion_tokens", "tps_overall", "tps_prefill", "tps_decode", "error"])
             for m in all_metrics:
                 writer.writerow([
                     m.timestamp, m.context_len, m.success, m.pass_fail,
                     round(m.ttft_ms, 2), round(m.total_latency_ms, 2),
-                    m.output_tokens, round(
-                        m.tps_overall, 2), round(m.tps_decode, 2),
+                    m.prompt_tokens, m.completion_tokens,
+                    round(m.tps_overall, 2), round(
+                        m.tps_prefill, 2), round(m.tps_decode, 2),
                     m.error
                 ])
 

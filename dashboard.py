@@ -101,6 +101,7 @@ def get_dashboard():
             summary { padding: 10px 15px; cursor: pointer; color: #aaa; font-weight: bold; user-select: none; }
             summary:hover { color: #fff; background: #222; }
             .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; padding: 15px; border-top: 1px solid #333; }
+            #detail-charts { padding: 20px; border-top: 1px solid #333; }
             .detail-item label { display: block; color: #666; font-size: 0.8em; margin-bottom: 4px; }
             .detail-item span { color: #eee; font-family: monospace; }
 
@@ -128,8 +129,8 @@ def get_dashboard():
             }
             .section-header h2 { 
                 margin: 0; 
-                font-size: 14px; 
-                color: #888; 
+                font-size: 18px; 
+                color: #ddd; 
                 text-transform: uppercase; 
                 letter-spacing: 1.5px; 
                 font-weight: 600;
@@ -137,10 +138,18 @@ def get_dashboard():
             .live-dot {
                 width: 8px;
                 height: 8px;
-                background: #0f0;
+                background: #444;
                 border-radius: 50%;
+                transition: all 0.3s ease;
+            }
+            .live-dot.active {
+                background: #0f0;
                 box-shadow: 0 0 10px #0f0;
                 animation: pulse 1.5s infinite;
+            }
+            .live-dot.blue.active {
+                background: #00e5ff;
+                box-shadow: 0 0 10px #00e5ff;
             }
             @keyframes pulse {
                 0% { opacity: 1; transform: scale(1); }
@@ -207,7 +216,7 @@ def get_dashboard():
 
             <!-- 1. SYSTEM MONITOR (REAL-TIME) -->
             <div class="section-header">
-                <div class="live-dot"></div>
+                <div id="dot-monitor" class="live-dot"></div>
                 <h2>System Monitor (Real-Time Hardware)</h2>
             </div>
             <div class="grid">
@@ -259,7 +268,7 @@ def get_dashboard():
 
             <!-- 3. ACTIVE TEST PERFORMANCE -->
             <div class="section-header">
-                <div class="live-dot" style="background: #00e5ff; box-shadow: 0 0 10px #00e5ff;"></div>
+                <div id="dot-active" class="live-dot blue"></div>
                 <h2>Active Test Performance</h2>
             </div>
             <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));">
@@ -286,10 +295,11 @@ def get_dashboard():
             </div>
 
             <!-- Test Results Table -->
+            <!-- Test Results Table -->
             <div id="test-results-section" style="margin-top: 30px; display: block;">
-                <h2 style="font-size: 16px; color: #888; margin: 0 0 15px 0; font-weight: 500;">
-                    TEST RESULTS
-                </h2>
+                <div class="section-header">
+                    <h2>Test Results</h2>
+                </div>
                 <table style="
                     width: 100%;
                     border-collapse: collapse;
@@ -467,16 +477,19 @@ def get_dashboard():
                 </div>
 
                 <details id="technical-config" open>
-                    <summary style="font-size: 1.1em; color: #fff; background: #222;">Test Scenario</summary>
+                    <summary style="font-size: 1.3em; color: #fff; background: #222;">Test Scenario</summary>
                     <div class="details-grid" id="config-details">
                         <!-- JS Populated -->
                     </div>
                 </details>
 
-                <div id="detail-charts">
-                    <div class="chart-container"><canvas id="latencyChart"></canvas></div>
-                    <div class="chart-container"><canvas id="resourceChart"></canvas></div>
-                </div>
+                <details id="performance-charts" open>
+                    <summary style="font-size: 1.3em; color: #fff; background: #222;">Performance Charts</summary>
+                    <div id="detail-charts">
+                        <div class="chart-container"><canvas id="latencyChart"></canvas></div>
+                        <div class="chart-container"><canvas id="resourceChart"></canvas></div>
+                    </div>
+                </details>
 
                 <div id="detail-tables"></div>
 
@@ -853,29 +866,12 @@ def get_dashboard():
                 // IDs are: 'latencyChart' and 'resourceChart'. They are in .chart-container divs.
 
                 // Hack: Find parent of latencyChart.
+                // Ensure charts are rendered inside the details block
                 const latCanvas = document.getElementById('latencyChart');
                 if (latCanvas) {
-                    const parent = latCanvas.parentElement.parentElement; // .chart-row ?
-                    // Actually, let's look at HTML structure later.
-                    // For now, render the charts but let's hide them by default via JS.
-                    latCanvas.parentElement.style.display = 'none';
-                    document.getElementById(
-                        'resourceChart').parentElement.style.display = 'none';
-
-                    // Insert Toggle Button if not exists
-                    if (!document.getElementById('chart-toggler')) {
-                        const btn = document.createElement('button');
-                        btn.id = 'chart-toggler';
-                        btn.style.cssText = 'width:100%; text-align:left; margin-bottom:15px; background:#1e1e1e; border:1px solid #333; padding:20px; border-radius:8px; cursor:pointer;';
-                        btn.innerHTML = `<h3 style="margin:0; color:#fff; border-bottom:1px solid #444; padding-bottom:10px;">▼ Performance Charts</h3>`;
-                        btn.onclick = () => {
-                            const disp = latCanvas.parentElement.style.display === 'none' ? 'block' : 'none';
-                            latCanvas.parentElement.style.display = disp;
-                            document.getElementById('resourceChart').parentElement.style.display = disp;
-                            btn.innerHTML = `<h3 style="margin:0; color:#fff; border-bottom:1px solid #444; padding-bottom:10px;">${disp === 'none' ? '▶' : '▼'} Performance Charts</h3>`;
-                        };
-                        latCanvas.parentElement.insertAdjacentElement('beforebegin', btn);
-                    }
+                    // Reset display just in case
+                    latCanvas.parentElement.style.display = 'block';
+                    document.getElementById('resourceChart').parentElement.style.display = 'block';
                 }
 
                 // ... Chart Rendering (Keep logic but wrapped) ...
@@ -912,8 +908,15 @@ def get_dashboard():
                         responsive: true, 
                         maintainAspectRatio: false, 
                         scales: { 
-                            y: { beginAtZero: true, grid: { color: '#333' } }, 
-                            x: { grid: { color: '#333' } } 
+                            y: { 
+                                beginAtZero: true, 
+                                grid: { color: '#333' },
+                                title: { display: true, text: 'Total Latency (ms)', color: '#aaa' }
+                            }, 
+                            x: { 
+                                grid: { color: '#333' },
+                                title: { display: true, text: 'Context Length (Tokens)', color: '#aaa' }
+                            } 
                         }, 
                         plugins: { 
                             legend: { labels: { color: '#ccc' } },
@@ -960,8 +963,16 @@ def get_dashboard():
                         responsive: true, 
                         maintainAspectRatio: false, 
                         scales: { 
-                            y: { beginAtZero: true, grid: { color: '#333' } }, 
-                            x: { grid: { color: '#333' }, ticks: { maxTicksLimit: 20 } } 
+                            y: { 
+                                beginAtZero: true, 
+                                grid: { color: '#333' },
+                                title: { display: true, text: 'Memory Usage (GB)', color: '#aaa' }
+                            }, 
+                            x: { 
+                                grid: { color: '#333' }, 
+                                ticks: { maxTicksLimit: 20 },
+                                title: { display: true, text: 'Benchmark Timeline (Seconds)', color: '#aaa' }
+                            } 
                         }, 
                         plugins: { 
                             legend: { labels: { color: '#ccc' } },
@@ -984,14 +995,23 @@ def get_dashboard():
                 let html = `
                     <div style="margin-top: 30px;">
                         <h3 style="color: #fff; border-bottom: 2px solid #555; padding-bottom: 10px;">Detailed Metrics by Context Size</h3>
+                        <div style="background:#222; border:1px solid #444; padding:15px; margin-bottom:20px; border-radius:8px; font-size:0.9em; color:#ccc;">
+                            <strong style="color:#fff;">ℹ️ Guide to Metrics:</strong>
+                            <ul style="margin:5px 0 0 20px; padding:0;">
+                                <li><strong>Ingest Speed (Prefill):</strong> How fast the system reads input. Critical for loading large documents.</li>
+                                <li><strong>Response Speed (Decode):</strong> How fast the system writes the answer. Critical for chat experience.</li>
+                            </ul>
+                        </div>
                         <table class="detail-table" style="width:100%; text-align:left; border-collapse:collapse;">
                             <thead style="background:#222; color:#aaa;">
                                 <tr>
                                     <th style="padding:10px;">Context</th>
-                                    <th style="padding:10px;">Standard System</th>
-                                    <th style="padding:10px;">aiDAPTIV+</th>
+                                    <th style="padding:10px;">Base Status</th>
+                                    <th style="padding:10px;">aiDAPTIV Status</th>
                                     <th style="padding:10px;">TTFT</th>
-                                    <th style="padding:10px;">Avg Latency</th>
+                                    <th style="padding:10px;">Ingest Speed</th>
+                                    <th style="padding:10px;">Response Speed</th>
+                                    <th style="padding:10px;">Total Time</th>
                                 </tr>
                             </thead>
                             <tbody>`;
@@ -1008,12 +1028,22 @@ def get_dashboard():
 
                     const ttft = a ? (a.ttft_ms ? a.ttft_ms.toFixed(0)+'ms' : '-') : '-';
                     const lat = a ? a.avg_latency_ms.toFixed(0)+'ms' : (b ? b.avg_latency_ms.toFixed(0)+'ms' : '-');
+                    
+                    // TPS Metrics (New)
+                    const getTps = (obj, field) => {
+                        if (!obj || !obj[field]) return '-';
+                        return obj[field].toFixed(1) + ' t/s';
+                    };
+                    const preTps = a ? getTps(a, 'tps_prefill') : getTps(b, 'tps_prefill');
+                    const decTps = a ? getTps(a, 'tps_decode') : getTps(b, 'tps_decode');
 
                     html += `<tr style="border-bottom:1px solid #333;">
                         <td style="padding:10px; color:#fff; font-weight:bold;">${formatK(ctx)}</td>
                         <td style="padding:10px;">${getStatus(b)}</td>
                         <td style="padding:10px;">${getStatus(a)}</td>
                         <td style="padding:10px; color:#ccc;">${ttft}</td>
+                        <td style="padding:10px; color:#ccc;">${preTps}</td>
+                        <td style="padding:10px; color:#ccc;">${decTps}</td>
                         <td style="padding:10px; color:#ccc;">${lat}</td>
                     </tr>`;
                 });
@@ -1099,6 +1129,13 @@ def get_dashboard():
                         document.getElementById('os_val').innerText = os_val;
                         document.getElementById('os_sub').innerText = os_sub;
                     }
+
+                    // Update Dots
+                    const isRunning = data.status && (data.status.toLowerCase().includes('running') || data.status.toLowerCase().includes('bench'));
+                    const dotMon = document.getElementById('dot-monitor');
+                    const dotAct = document.getElementById('dot-active');
+                    if (dotMon) isRunning ? dotMon.classList.add('active') : dotMon.classList.remove('active');
+                    if (dotAct) isRunning ? dotAct.classList.add('active') : dotAct.classList.remove('active');
 
                     // TPS
                     document.getElementById(
@@ -1272,6 +1309,18 @@ def get_dashboard():
                 const concurrency = document.getElementById('concurrency').value;
                 const runsPerContext = document.getElementById('runs-per-context').value;
                 const name = document.getElementById('scenario-name').value;
+
+                // Toggle Step Size visibility based on mode
+                const stepInput = document.getElementById('context-step');
+                if (stepMode === 'geometric') {
+                    stepInput.disabled = true;
+                    stepInput.parentElement.style.opacity = '0.5';
+                    stepInput.title = "Step size not applicable in Geometric (x2) mode";
+                } else {
+                    stepInput.disabled = false;
+                    stepInput.parentElement.style.opacity = '1';
+                    stepInput.title = "";
+                }
 
                 // Generate context array for display
                 const contexts = [];
@@ -1447,8 +1496,9 @@ def get_dashboard():
 @app.get("/snapshot")
 def get_snapshot():
     global current_snapshot
-    # Reset TPS to 0 if snapshot is stale (>5 seconds old)
+    # Reset TPS and Status if snapshot is stale (>5 seconds old)
     if current_snapshot.get("timestamp", 0) < time.time() - 5:
+        current_snapshot["status"] = "Idle"
         if "app" in current_snapshot and isinstance(current_snapshot["app"], dict):
             current_snapshot["app"]["tps"] = 0.0
     return current_snapshot
