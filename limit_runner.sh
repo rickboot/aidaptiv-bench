@@ -22,34 +22,34 @@ if ! command -v systemd-run &> /dev/null; then
     exit 1
 fi
 
-# Stop existing Ollama
-echo "🛑 Stopping any running Ollama instances..."
-pkill ollama || true
-sleep 2
+# Shift past the first two arguments (RAM and SWAP) to get the command
+shift 2
+COMMAND="$@"
 
-# Verify stopped
-if pgrep ollama > /dev/null; then
-    echo "⚠️  Warning: Ollama is still running. Trying force kill..."
-    pkill -9 ollama
-    sleep 1
+if [ -z "$COMMAND" ]; then
+    echo "❌ Error: No command provided to run."
+    echo "Usage: ./limit_runner.sh [RAM_GB] [SWAP_GB] [COMMAND...]"
+    exit 1
 fi
 
 echo "🔒 Configuring Constraints:"
 echo "   • RAM Limit:  ${RAM_GB} GB"
 echo "   • Swap Limit: ${SWAP_GB} GB"
+echo "   • Command:    $COMMAND"
 
 # Convert to Bytes/Strings for systemd
 MEM_LIMIT="${RAM_GB}G"
 
-UNIT_NAME="ollama-constrained-$(date +%s)"
+UNIT_NAME="bench-constrained-$(date +%s)"
 
+# Run the user-provided command inside the cgroup
 sudo systemd-run --unit="$UNIT_NAME" \
     --property=MemoryMax="$MEM_LIMIT" \
     --property=MemorySwapMax="${SWAP_GB}G" \
     --service-type=simple \
-    /usr/bin/ollama serve
+    $COMMAND
 
-echo "✅ Ollama started in background unit: $UNIT_NAME"
+echo "✅ Process started in background unit: $UNIT_NAME"
 echo ""
 echo "📊 Cgroup Status:"
 systemctl status "$UNIT_NAME" --no-pager

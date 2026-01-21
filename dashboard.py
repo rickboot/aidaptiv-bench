@@ -337,6 +337,15 @@ def get_dashboard():
 
                 <div class="form-row">
                     <div class="form-group">
+                        <label for="runtime-select">Model Runtime</label>
+                        <select id="runtime-select">
+                            <option value="ollama" selected>Ollama (Standard)</option>
+                            <option value="llamacpp">Llama.cpp (High Performance)</option>
+                            <option value="vllm">vLLM (Enterprise)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
                         <label for="model-select">Model</label>
                         <select id="model-select">
                             <option value="llama3.1:8b">Llama 3.1 8B</option>
@@ -402,17 +411,17 @@ def get_dashboard():
                         <input type="number" id="runs-per-context" value="1" min="1">
                     </div>
                     <div class="form-group">
-                        <label for="ram-limit">RAM Limit (GB)</label>
+                        <label for="ram-limit">RAM Limit (GB) (Linux)</label>
                         <input type="number" id="ram-limit" value="16">
                     </div>
                     <div class="form-group">
-                        <label for="swap-limit">VRAM/Swap Limit (GB)</label>
+                        <label for="swap-limit">SSD Swap Limit (GB) (Linux)</label>
                         <input type="number" id="swap-limit" value="32">
                     </div>
                 </div>
 
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <button class="btn-primary" onclick="launchBenchmark()" style="background: #f90; width: 100%; padding: 15px; font-size: 1.2em;">Run Benchmark</button>
+                    <button id="btn-launch" class="btn-primary" style="background: #f90; width: 100%; padding: 15px; font-size: 1.2em;">Run Benchmark</button>
                 </div>
 
                 <div id="run-status" style="margin-top: 20px; padding: 15px; background: #1a1a1a; border-radius: 5px; border: 1px solid #333; display: none;">
@@ -784,13 +793,30 @@ def get_dashboard():
                 // Calculate Metrics
                 const getMaxContext = (rows) => {
                     if (!rows || rows.length === 0) return 0;
-                    return Math.max(...rows.map(r => r.context || 0));
+                    const passed = rows.filter(r => r.pass_rate_pct > 0);
+                    if (passed.length === 0) return 0;
+                    return Math.max(...passed.map(r => r.context || 0));
                 };
-                const totalTokens = (data.aidaptiv || []).reduce((acc, r) => acc + (r.context * (r.run_count || 1)), 0);
-                // Note: accurate token count needs 'runs * context', approximation here if run_count missing
+                const totalTokens = (data.aidaptiv || []).reduce((acc, r) => {
+                    if (r.total_completion_tokens !== undefined) {
+                        return acc + r.total_completion_tokens + (r.total_prompt_tokens || 0);
+                    }
+                    return acc + (r.context * (r.run_count || 1));
+                }, 0);
 
                 const baseMax = getMaxContext(data.baseline);
-                const aiMax = getMaxContext(data.aidaptiv);
+                const aiMax = data.aidaptiv ? getMaxContext(data.aidaptiv) : -1;
+
+                let displayMaxCtx = '<span style="color:#666">N/A</span>';
+                let displaySubCtx = 'No Data Available';
+
+                if (aiMax > 0) {
+                    displayMaxCtx = formatK(aiMax);
+                    displaySubCtx = `vs Standard: ${baseMax > 0 ? formatK(baseMax) : 'N/A'}`;
+                } else if (baseMax > 0) {
+                    displayMaxCtx = formatK(baseMax);
+                    displaySubCtx = '(Standard System Benchmark)';
+                }
 
                 // Stability: Did aiDAPTIV pass the max context?
                 const isStable = (data.aidaptiv || []).every(r => r.pass_rate_pct >= 95); // Strict stability check?
@@ -800,8 +826,8 @@ def get_dashboard():
                 execSummary.innerHTML = `
                     <div class="summary-card" style="border-top: 4px solid #f90;">
                         <h4>Max Viable Context</h4>
-                        <div class="val">${formatK(aiMax)}</div>
-                        <div class="sub">vs Standard: ${formatK(baseMax)}</div>
+                        <div class="val">${displayMaxCtx}</div>
+                        <div class="sub">${displaySubCtx}</div>
                     </div>
                     <div class="summary-card" style="border-top: 4px solid #0f0;">
                         <h4>Stability Score</h4>
@@ -811,7 +837,7 @@ def get_dashboard():
                     <div class="summary-card" style="border-top: 4px solid #0bf;">
                         <h4>Total Tokens</h4>
                         <div class="val">${(totalTokens/1000).toFixed(1)}K</div>
-                        <div class="sub">Generated in this run</div>
+                        <div class="sub">Processed in this run</div>
                     </div>
                 `;
 
@@ -1290,10 +1316,16 @@ def get_dashboard():
                 const name = document.getElementById('scenario-name').value;
 
                 try {
+                    const runtime = document.getElementById('runtime-select').value;
+                    let endpoint = "http://localhost:11434/v1/completions";
+                    if (runtime === 'llamacpp') endpoint = "http://localhost:8000/v1/completions";
+                    if (runtime === 'vllm') endpoint = "http://localhost:8000/v1/completions";
+
                     const response = await fetch('/api/config', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
+                            endpoint: endpoint,
                             scenario_name: name,
                             model: model,
                             context_start: start,
@@ -1416,13 +1448,23 @@ def get_dashboard():
                 updateScenarioName();
                 updateCommandUI(); // Initial populate
 
-                ['model-select', 'context-start', 'context-end', 'context-step', 'step-mode', 'concurrency', 'runs-per-context', 'ram-limit', 'swap-limit'].forEach(id => {
+                ['runtime-select', 'model-select', 'context-start', 'context-end', 'context-step', 'step-mode', 'concurrency', 'runs-per-context', 'ram-limit', 'swap-limit'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) {
                         el.addEventListener('change', () => { updateScenarioName(); updateCommandUI(); });
                         if (el.tagName === 'INPUT') el.addEventListener('input', () => { updateScenarioName(); updateCommandUI(); });
                     }
                 });
+
+                // Robust Launch Handler
+                const btnLaunch = document.getElementById('btn-launch');
+                if (btnLaunch) {
+                    btnLaunch.addEventListener('click', (e) => {
+                        e.preventDefault(); // Prevent any form submission or double-action
+                        if (isLaunching) return; 
+                        launchBenchmark();
+                    });
+                }
 
                 // Initial check for reports
                 const vr = document.getElementById('view-reports');
@@ -1437,12 +1479,10 @@ def get_dashboard():
                     if (ramInput) {
                         ramInput.disabled = true;
                         ramInput.title = "Memory limiting is only available on Linux.";
-                        ramInput.parentElement.querySelector('label').innerText += " (Linux only)";
                     }
                     if (swapInput) {
                         swapInput.disabled = true;
                         swapInput.title = "Memory limiting is only available on Linux.";
-                        swapInput.parentElement.querySelector('label').innerText += " (Linux only)";
                     }
                 }
             });
@@ -1653,6 +1693,7 @@ def get_report_csv(run_id: str, stage: str = "all", log_type: str = "metrics"):
     stage: 'baseline' | 'aidaptiv'
     log_type: 'metrics' (Hardware/System) | 'requests' (Performance/Latency)
     """
+
     run_dir = os.path.join("results", run_id)
     target_file = None
 
@@ -1694,6 +1735,10 @@ def update_config(data: dict):
         # Save backup
         with open(backup_path, 'w') as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+        # Update endpoint if provided
+        if 'endpoint' in data:
+            config['runtime']['endpoint'] = data['endpoint']
 
         # Update runtime model if provided
         if 'model' in data and data['model'] != 'custom':
@@ -1771,8 +1816,8 @@ def run_benchmark(payload: dict = None):
         # Use osascript to open Terminal and run the command
         # Simplified to ensure exactly one window/tab is targeted
         applescript = f'''tell application "Terminal"
-    activate
     do script "{final_cmd}"
+    activate
 end tell'''
 
         subprocess.run(['osascript', '-e', applescript],

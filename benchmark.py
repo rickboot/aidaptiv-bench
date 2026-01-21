@@ -467,7 +467,10 @@ class BenchmarkSuite:
                     "avg_ttft_ms": avg_ttft,
                     "tps_prefill": avg_tps_pre,
                     "tps_decode": avg_tps_dec,
-                    "pass_rate_pct": pass_rate
+                    "pass_rate_pct": pass_rate,
+                    "total_prompt_tokens": sum(m.prompt_tokens for m in valid_runs) if valid_runs else 0,
+                    "total_completion_tokens": sum(m.completion_tokens for m in valid_runs) if valid_runs else 0,
+                    "run_count": len(valid_runs)
                 })
 
                 # Save test result to telemetry for dashboard display
