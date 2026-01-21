@@ -10,6 +10,7 @@ import platform
 import time
 
 is_linux = platform.system() == 'Linux'
+has_systemd = is_linux and os.path.exists("/run/systemd/system")
 
 
 app = FastAPI(title="aiDAPTIV Live Dashboard")
@@ -52,6 +53,7 @@ def get_dashboard():
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script>
             const IS_LINUX = __IS_LINUX__;
+            const HAS_SYSTEMD = __HAS_SYSTEMD__;
             const formatK = (val) => val >= 1024 ? `${Math.round(val / 1024)}K` : val;
         </script>
         <style>
@@ -66,10 +68,10 @@ def get_dashboard():
             .status-bar { background: #222; padding: 20px; border-radius: 8px; margin-bottom: 20px; color: #fff; font-size: 1.6em; font-weight: 600; border-left: 8px solid #0f0; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
 
             /* Dashboard Grid */
-            .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+            .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; }
             .card { background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; }
-            .card h2 { margin-top: 0; color: #aaa; font-size: 1em; text-transform: uppercase; letter-spacing: 1px; }
-            .big-val { font-size: 2.5em; font-weight: bold; color: #fff; }
+            .card h2 { margin-top: 0; color: #aaa; font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px; }
+            .big-val { font-size: 1.4em; font-weight: bold; color: #fff; }
             .sub-val { color: #666; font-size: 0.9em; }
 
             /* Reports Table */
@@ -169,7 +171,7 @@ def get_dashboard():
                 border-radius: 4px;
             }
             .stat-card label { display: block; font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 5px; font-weight: bold; }
-            .stat-card .val { font-size: 2.2em; font-weight: 800; color: #fff; }
+            .stat-card .val { font-size: 1.3em; font-weight: 800; color: #fff; }
             .stat-card.success { border-left-color: #0ba360; background: linear-gradient(to right, #0ba36015, transparent); }
             .stat-card.context { border-left-color: #00e5ff; background: linear-gradient(to right, #00e5ff15, transparent); }
             .stat-card.throughput { border-left-color: #f90; background: linear-gradient(to right, #f9015, transparent); }
@@ -203,8 +205,9 @@ def get_dashboard():
                 <div style="display: flex; justify-content: space-between; align-items: flex-end;">
                     <div>
                         <div style="font-size: 12px; opacity: 0.8; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Current Benchmark Step</div>
-                        <div id="test-status-text" style="font-size: 26px; font-weight: 700; margin-top: 5px; font-family: 'Segoe UI', sans-serif;">
-                            Testing Context: --
+                        <div id="test-status-text" style="font-size: 26px; font-weight: 700; margin-top: 5px; font-family: 'Segoe UI', sans-serif; display: flex; align-items: baseline; gap: 12px;">
+                            <span>Testing Context: --</span>
+                            <span id="quant-badge" style="background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 4px; font-size: 14px; font-weight: 500; letter-spacing: 0.5px;">--</span>
                         </div>
                     </div>
                     <div id="test-progress-pct" style="font-size: 14px; font-weight: bold; opacity: 0.9;">0%</div>
@@ -221,12 +224,12 @@ def get_dashboard():
             </div>
             <div class="grid">
                 <div class="card">
-                    <h2>Tier 1: Active AI Memory</h2>
+                    <h2>GPU Memory</h2>
                     <div id="vram_val" class="big-val">0.0 GB</div>
                     <div id="vram_sub" class="sub-val">Logical AI Load</div>
                 </div>
                 <div class="card">
-                    <h2>Tier 2: Host RAM</h2>
+                    <h2>System RAM</h2>
                     <div id="ram_val" class="big-val">0.0 GB</div>
                     <div id="ram_sub" class="sub-val">of 0.0 GB Total</div>
                 </div>
@@ -272,7 +275,7 @@ def get_dashboard():
                 <h2>Active Test Performance</h2>
             </div>
             <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));">
-                <div class="card" style="border-top: 3px solid #0ba360;">
+                <div class="card">
                     <h2>Throughput</h2>
                     <div id="tps_val" class="big-val">0.0</div>
                     <div id="tps_sub" class="sub-val">Tokens / Sec</div>
@@ -335,6 +338,15 @@ def get_dashboard():
                     <input type="text" id="scenario-name" placeholder="e.g., Llama-70B Memory Test">
                 </div>
 
+                <div class="form-group">
+                    <label for="run-mode">Run Mode</label>
+                    <select id="run-mode">
+                        <option value="both" selected>Standard (Baseline + aiDAPTIV)</option>
+                        <option value="baseline">Baseline Only</option>
+                        <option value="aidaptiv">aiDAPTIV Only</option>
+                    </select>
+                </div>
+
                 <div class="form-row">
                     <div class="form-group">
                         <label for="runtime-select">Model Runtime</label>
@@ -349,6 +361,7 @@ def get_dashboard():
                         <label for="model-select">Model</label>
                         <select id="model-select">
                             <option value="llama3.1:8b">Llama 3.1 8B</option>
+                            <option value="qwen2.5:32b">Qwen 2.5 32B</option>
                             <option value="llama3.1:70b">Llama 3.1 70B</option>
                             <option value="qwen2.5:72b">Qwen 2.5 72B</option>
                             <option value="custom">Custom (edit config.yaml)</option>
@@ -928,8 +941,8 @@ def get_dashboard():
                 };
 
                 const latDatasets = [];
-                if (data.baseline) latDatasets.push({ label: 'Standard System', data: getDatapoints(data.baseline), borderColor: '#00ffff', tension: 0.3 });
-                if (data.aidaptiv) latDatasets.push({ label: 'aiDAPTIV', data: getDatapoints(data.aidaptiv), borderColor: '#ff00ff', tension: 0.3 });
+                if (data.baseline && data.baseline.length > 0) latDatasets.push({ label: 'Standard System', data: getDatapoints(data.baseline), borderColor: '#00ffff', tension: 0.3 });
+                if (data.aidaptiv && data.aidaptiv.length > 0) latDatasets.push({ label: 'aiDAPTIV', data: getDatapoints(data.aidaptiv), borderColor: '#ff00ff', tension: 0.3 });
 
                 // Render Latency Chart
                 new Chart(ctxLat, {
@@ -1144,18 +1157,15 @@ def get_dashboard():
                     document.getElementById(
                         'ram_val').innerText = data.system.ram_used_gb.toFixed(1) + " GB";
                     document.getElementById(
-                        'ram_sub').innerText = "of " + data.system.ram_total_gb.toFixed(1) + " GB";
+                        'ram_sub').innerText = data.system.ram_total_gb.toFixed(1) + " GB System Total";
 
                     // Tier 1
                     document.getElementById(
                         'vram_val').innerText = data.gpu.vram_used_gb.toFixed(1) + " GB";
-                    if (data.app && data.app.model) {
-                         document.getElementById(
-                             'vram_sub').innerText = "Model: " + data.app.model;
-                    } else {
-                         document.getElementById(
-                             'vram_sub').innerText = "Logical AI Load";
-                    }
+                    
+                    const gpuBrand = (data.gpu.name || "GPU").replace("NVIDIA ", "");
+                    const vramTot = data.gpu.vram_total_gb.toFixed(0);
+                    document.getElementById('vram_sub').innerText = `${gpuBrand} (${vramTot} GB)`;
 
                     // Tier 3
                     const mkIO = (d) => {
@@ -1187,7 +1197,7 @@ def get_dashboard():
 
                     // CPU
                     document.getElementById(
-                        'cpu_val').innerText = data.system.cpu_pct + "%";
+                        'cpu_val').innerText = (data.gpu.gpu_util ?? data.system.cpu_pct) + "%";
 
                     // LATENCY METRICS
                     // TTFT
@@ -1223,8 +1233,11 @@ def get_dashboard():
                             const totalPlanned = progress.total_contexts || 1;
                             const currentIdx = completedTests + 1;
                             
-                            document.getElementById('test-status-text').innerText =
+                            
+                            document.querySelector('#test-status-text span:first-child').innerText =
                                 `Testing Context: ${formatK(progress.current_context)} (${currentIdx} of ${totalPlanned})`;
+                            
+                            document.getElementById('quant-badge').innerText = data.app?.quantization || 'Unknown';
                                 
                             // Overall Progress %
                             const progressPct = Math.round((completedTests / totalPlanned) * 100);
@@ -1336,7 +1349,8 @@ def get_dashboard():
                             runs_per_context: parseInt(runsPerContext),
                             ram_limit: parseFloat(document.getElementById('ram-limit').value),
                             swap_limit: parseFloat(
-                                document.getElementById('swap-limit').value)
+                                document.getElementById('swap-limit').value),
+                            run_mode: document.getElementById('run-mode').value
                         })
                     });
 
@@ -1359,6 +1373,7 @@ def get_dashboard():
                 const concurrency = document.getElementById('concurrency').value;
                 const runsPerContext = document.getElementById('runs-per-context').value;
                 const name = document.getElementById('scenario-name').value;
+                const runMode = document.getElementById('run-mode').value;
 
                 // Toggle Step Size visibility based on mode
                 const stepInput = document.getElementById('context-step');
@@ -1383,10 +1398,21 @@ def get_dashboard():
                 const ramLimit = document.getElementById('ram-limit').value;
                 const swapLimit = document.getElementById('swap-limit').value;
 
-                let cmd = `sudo python3 benchmark.py --model ${model} --context-start ${start} --context-end ${end} --context-step ${step} --step-mode ${stepMode} --concurrency ${concurrency}`;
+                let cmd = `sudo python3 benchmark.py --model ${model} --context-start ${start} --context-end ${end}`;
+                
+                // Only add step parameter for linear mode (geometric mode doubles automatically)
+                if (stepMode === 'linear') {
+                    cmd += ` --context-step ${step}`;
+                }
+                
+                cmd += ` --step-mode ${stepMode} --concurrency ${concurrency}`;
 
-                // Append limit command ONLY if on Linux and values are present
-                if (IS_LINUX && ramLimit && swapLimit) {
+                if (runMode !== 'both') {
+                    cmd += ` --stage ${runMode}`;
+                }
+
+                // Append limit command ONLY if on Linux, systemd is available, and values are present
+                if (IS_LINUX && HAS_SYSTEMD && ramLimit && swapLimit) {
                     cmd += ` && ./limit_runner.sh ${ramLimit} ${swapLimit}`;
                 }
 
@@ -1448,7 +1474,7 @@ def get_dashboard():
                 updateScenarioName();
                 updateCommandUI(); // Initial populate
 
-                ['runtime-select', 'model-select', 'context-start', 'context-end', 'context-step', 'step-mode', 'concurrency', 'runs-per-context', 'ram-limit', 'swap-limit'].forEach(id => {
+                ['runtime-select', 'model-select', 'context-start', 'context-end', 'context-step', 'step-mode', 'concurrency', 'runs-per-context', 'ram-limit', 'swap-limit', 'run-mode'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) {
                         el.addEventListener('change', () => { updateScenarioName(); updateCommandUI(); });
@@ -1548,7 +1574,8 @@ def get_dashboard():
     </body>
     </html>
     """
-    return html.replace("__IS_LINUX__", "true" if is_linux else "false")
+    html = html.replace("__IS_LINUX__", "true" if is_linux else "false")
+    return html.replace("__HAS_SYSTEMD__", "true" if has_systemd else "false")
 
 
 @app.get("/snapshot")
@@ -1557,8 +1584,12 @@ def get_snapshot():
     # Reset TPS and Status if snapshot is stale (>5 seconds old)
     if current_snapshot.get("timestamp", 0) < time.time() - 5:
         current_snapshot["status"] = "Idle"
+        # Fully clear test progress and reset app metrics
+        current_snapshot["test_progress"] = {}
         if "app" in current_snapshot and isinstance(current_snapshot["app"], dict):
             current_snapshot["app"]["tps"] = 0.0
+            current_snapshot["app"]["ttft_ms"] = 0.0
+            current_snapshot["app"]["runtime_ms"] = 0.0
     return current_snapshot
 
 
@@ -1783,6 +1814,10 @@ def update_config(data: dict):
             config['test']['ram_limit'] = float(data['ram_limit'])
         if 'swap_limit' in data:
             config['test']['swap_limit'] = float(data['swap_limit'])
+        
+        # Update Run Mode
+        if 'run_mode' in data:
+            config['test']['run_mode'] = data['run_mode']
 
         # Write back to file
         with open('config.yaml', 'w') as f:
@@ -1795,7 +1830,10 @@ def update_config(data: dict):
 
 @app.post("/api/run-benchmark")
 def run_benchmark(payload: dict = None):
-    """Open Terminal and run the benchmark command(macOS only)."""
+    """Open Terminal and run the benchmark command (macOS only)."""
+    if is_linux:
+        return {"success": False, "error": "Auto-launch is macOS only. Please copy/run the command manually."}
+
     try:
         import subprocess
 

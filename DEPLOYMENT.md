@@ -63,6 +63,55 @@ Currently, the tool supports a **Manual Toggle** workflow:
 5. Press `Enter` in the terminal to continue running the **aiDAPTIV** stage.
 
 ---
+    
+## 🐧 WSL2 (Windows Subsystem for Linux)
+
+WSL2 is a great environment for development, but has some unique quirks compared to native Linux.
+
+### 1. Prerequisites (The "Gotchas")
+*   **Systemd is often disabled by default**: This means the automatic service runner (`start.sh`) and the limit enforcer (`limit_runner.sh`) might not work out of the box.
+*   **Dependencies**: You might need to install Python headers and `zstd`.
+
+### 2. Manual Installation
+Since `start.sh` relies on systemd/services, run these steps manually:
+
+1.  **Install System Dependencies**:
+    ```bash
+    sudo apt update && sudo apt install python3-pip python3-dev zstd
+    ```
+
+2.  **Install Python Packages**:
+    ```bash
+    # Install directly (or use a venv)
+    pip install psutil requests pyyaml pandas plotly pynvml
+    ```
+
+3.  **Install Ollama (Manual)**:
+    ```bash
+    curl -fsSL https://ollama.com/install.sh | sh
+    ```
+
+### 3. Running the Benchmark
+1.  **Start Ollama** (in a separate terminal, since no systemd service):
+    ```bash
+    ollama serve
+    ```
+2.  **Pull the Model**:
+    ```bash
+    ollama pull llama3.1:8b
+    ```
+3.  **Run Dashboard**:
+    ```bash
+    python dashboard.py
+    ```
+    *Open http://localhost:8081 in your Windows browser.*
+
+4.  **Execute Tests**:
+    *   Click "Run Benchmark" in the dashboard.
+    *   **Note**: On WSL2, the auto-launcher is disabled. **Copy the generated command** and paste it into your WSL2 terminal.
+    *   *Warning*: `limit_runner.sh` (16GB Limit) **will not work** unless you enable systemd in `/etc/wsl.conf`. Use the standard benchmark command instead.
+
+---
 
 ## 🛡️ Defensible Benchmarking (Limit Enforcement)
 

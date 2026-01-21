@@ -5,7 +5,7 @@ platform:
 runtime:
   backend: vllm
   endpoint: http://localhost:11434/v1/completions
-  model_name: llama3.1:8b
+  model_name: qwen2.5:32b
 aidaptiv:
   toggle_method: manual
   storage_device: nvme0n1
@@ -13,6 +13,12 @@ test:
   context_lengths:
   - 1024
   - 2048
+  - 4096
+  - 8192
+  - 16384
+  - 32768
+  - 65536
+  - 131072
   concurrency: 1
   runs_per_context: 1
   warmup_runs: 1
@@ -21,10 +27,11 @@ test:
   top_p: 0.9
   seed: 42
   timeout_seconds: 300
-  scenario_name: Llama-8B_1K-2K_double
+  scenario_name: Qwen-32B_1K-128K_double
   step_mode: geometric
   ram_limit: 16.0
   swap_limit: 32.0
+  run_mode: both
 telemetry:
   sample_interval_sec: 0.2
   collect_disk_io: true

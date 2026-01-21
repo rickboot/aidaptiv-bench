@@ -166,18 +166,15 @@ class BenchmarkSuite:
         prompt, meta = scenario.generate_prompt(context_len)
         max_tokens = 10 if dry_run else self.config['test']['max_tokens_output']
 
-        # Construct Payload (Ollama specific)
+        # Construct Payload (OpenAI-compatible format for Ollama's /v1/completions endpoint)
         payload = {
             "model": self.config['runtime']['model_name'],
             "prompt": prompt,
-            "stream": True,  # Enable streaming from Ollama
-            "options": {
-                "num_predict": max_tokens,
-                "temperature": self.config['test'].get('temperature', 0.0),
-                "top_p": self.config['test'].get('top_p', 0.9),
-                "seed": self.config['test'].get('seed', 42),
-                # "num_ctx": context_len + 1024 # Typically handled by server, but strict if needed
-            }
+            "stream": True,
+            "max_tokens": max_tokens,
+            "temperature": self.config['test'].get('temperature', 0.0),
+            "top_p": self.config['test'].get('top_p', 0.9),
+            "seed": self.config['test'].get('seed', 42),
         }
 
         t0 = time.time()
@@ -187,6 +184,7 @@ class BenchmarkSuite:
         completion_tokens_count = 0
         success = False
         error_msg = ""
+        full_response = []
 
         # Notify telemetry that request is starting
         if collector:
@@ -533,19 +531,8 @@ class BenchmarkSuite:
         if stage in ["all", "baseline"]:
             self.run_sweep("baseline")
 
-        # Intermission
-        if stage == "all":
-            print("\n" + "="*60)
-            print("⏸️  PAUSED FOR MANUAL TOGGLE")
-            print("Please manually ENABLE aiDAPTIV on your target server now.")
-            print("If you need to reboot, stop this script and run:")
-            print(
-                f"  python3 benchmark.py --stage aidaptiv --run-id {os.path.basename(self.results_dir)}")
-            print("="*60)
-            user_in = input("Press Enter to continue, or 'q' to quit >> ")
-            if user_in.lower().strip() == 'q':
-                print("👋 Exiting benchmark early.")
-                return
+        # Intermission - Skipped as requested
+        # if stage == "all": ... (REMOVED)
 
         # Run aiDAPTIV
         if stage in ["all", "aidaptiv"]:
@@ -607,6 +594,19 @@ if __name__ == "__main__":
             lengths = list(range(start, end + 1, step))
 
         conf['test']['context_lengths'] = lengths
+
+        # Generate dynamic scenario name if model or contexts changed
+        model_part = conf['runtime']['model_name'].split(
+            ':')[0].replace('llama3.1', 'Llama').replace('qwen2.5', 'Qwen')
+        if ':' in conf['runtime']['model_name']:
+            size = conf['runtime']['model_name'].split(':')[1].upper()
+            model_part += f"-{size}"
+
+        def format_k(v):
+            return f"{v//1024}K" if v >= 1024 else str(v)
+
+        step_str = "double" if mode == "geometric" else f"{format_k(step)}-step"
+        conf['test']['scenario_name'] = f"{model_part}_{format_k(start)}-{format_k(end)}_{step_str}"
 
     suite = BenchmarkSuite(conf, args.run_id)
     suite.run(args.stage)

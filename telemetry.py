@@ -30,6 +30,7 @@ class TelemetryCollector:
         self.dashboard_url = dashboard_url
         self.storage_device = storage_device
         self.model_name = model_name
+        self.quantization = "Unknown"
         self.status_msg = "Initializing..."
 
         # Load configured RAM limit from config.yaml
@@ -65,6 +66,20 @@ class TelemetryCollector:
         self.total_contexts = 0
         self.planned_contexts = []
         self.test_results = {}  # {context_len: {ttft_ms, runtime_ms, tps}}
+
+        # Initialize NVML if available and get GPU Name
+        self.gpu_name = "Unknown"
+        if HAS_NVML:
+            try:
+                pynvml.nvmlInit()
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                self.gpu_name = pynvml.nvmlDeviceGetName(handle)
+                if isinstance(self.gpu_name, bytes):
+                    self.gpu_name = self.gpu_name.decode('utf-8')
+            except:
+                pass
+        elif platform.system() == "Darwin":
+            self.gpu_name = "Apple Silicon"
 
     def set_status(self, msg: str):
         self.status_msg = msg
@@ -117,12 +132,13 @@ class TelemetryCollector:
                 "timestamp": now,
                 "status": self.status_msg,
                 "system": {"ram_used_gb": ram_used, "ram_total_gb": ram_total, "cpu_pct": cpu},
-                "gpu": {"vram_used_gb": vram_used, "vram_total_gb": vram_total},
+                "gpu": {"vram_used_gb": vram_used, "vram_total_gb": vram_total, "name": self.gpu_name},
                 "disk": {"read_mb_s": t3_read, "write_mb_s": t3_write},
                 "os_disk": {"read_mb_s": os_read, "write_mb_s": os_write},
                 "app": {
                     "tps": tps,
                     "model": self.model_name,
+                    "quantization": self.quantization,
                     "ttft_ms": self.current_ttft_ms,
                     "runtime_ms": current_runtime_ms,
                     "last_latency_ms": self.last_request_latency_ms
@@ -145,6 +161,20 @@ class TelemetryCollector:
 
         self.running = True
         self._start_time = time.time()
+
+        # Fetch model quantization info
+        try:
+            # Assumes Ollama is at localhost:11434 (default)
+            # Find the actual base URL from dashboard_url or assume default
+            ollama_url = "http://localhost:11434"
+            resp = requests.post(f"{ollama_url}/api/show",
+                                 json={"name": self.model_name}, timeout=2.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                self.quantization = data.get("details", {}).get(
+                    "quantization_level", "Unknown")
+        except:
+            pass
 
         # Open CSV and write header
         self._file = open(self.output_path, 'w', newline='')
@@ -337,9 +367,8 @@ class TelemetryCollector:
                 # System Metrics
                 ram = psutil.virtual_memory()
                 ram_used = ram.used / (1024**3)
-                # Use configured limit if available, otherwise fall back to physical total
-                ram_total = self.ram_limit_gb if self.ram_limit_gb else (
-                    ram.total / (1024**3))
+                # Always report physical total
+                ram_total = ram.total / (1024**3)
 
                 # GPU Compute & Power
                 gpu_util = 0.0
@@ -349,11 +378,15 @@ class TelemetryCollector:
                     # Poll Mac
                     gpu_util, gpu_power = self._get_mac_gpu_util()
                 else:
-                    # NVML Logic (Future DGX)
-                    # handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                    # gpu_util = pynvml.nvmlDeviceGetUtilizationRates(handle).gpu
-                    # gpu_power = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
-                    pass
+                    try:
+                        handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                        gpu_util = pynvml.nvmlDeviceGetUtilizationRates(handle).gpu
+                        try:
+                            gpu_power = pynvml.nvmlDeviceGetPowerUsage(handle) / 1000.0
+                        except:
+                            pass
+                    except:
+                        pass
 
                 # Using Host CPU only if GPU is 0 (fallback) or as separate metric?
                 # User wants "Compute Workload".
